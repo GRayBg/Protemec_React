@@ -3,7 +3,7 @@ import sql from 'mssql'
 import cors from 'cors'
 import dotenv from 'dotenv'
 
-// Cargar variables de entorno desde .env
+// Cargar variables de entorno desde .env (en entorno local)
 dotenv.config()
 
 const app = express()
@@ -11,12 +11,11 @@ const app = express()
 // Middlewares
 app.use(express.json())
 
-// Configuración de CORS permitiendo el entorno local y la URL de Azure
+// Configuración de CORS permitiendo peticiones desde cualquier origen (Static Web App / Local)
 app.use(cors({
-  origin: [
-    'http://localhost:5173',
-    'https://delightful-desert-01b37af10.7.azurestaticapps.net'
-  ]
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }))
 
 // Configuración de la conexión a Azure SQL Database
@@ -110,7 +109,7 @@ app.put('/api/compras/:id', async (req, res) => {
   }
 })
 
-/// Servidor ajustado para Azure o local
+// Servidor ajustado para Azure App Service o entorno local
 const PORT = process.env.PORT || 3000
 app.listen(PORT, () => {
   console.log(`🚀 Servidor Backend corriendo en puerto ${PORT}`)
