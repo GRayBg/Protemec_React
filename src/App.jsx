@@ -1,5 +1,9 @@
 import { useState, useEffect } from 'react'
 
+// Define la URL base de tu API backend desplegado en la nube.
+// Si no existe la variable de entorno VITE_API_URL, usará localhost por defecto para desarrollo local.
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+
 export default function App() {
   const [compras, setCompras] = useState([])
   const [cargando, setCargando] = useState(true)
@@ -15,7 +19,7 @@ export default function App() {
 
   // Obtener lista de compras
   const obtenerCompras = () => {
-    fetch('http://localhost:3000/api/datos')
+    fetch(`${API_URL}/api/datos`)
       .then((respuesta) => {
         if (!respuesta.ok) throw new Error('Error al consultar la API')
         return respuesta.json()
@@ -40,7 +44,7 @@ export default function App() {
     setGuardando(true)
 
     try {
-      const respuesta = await fetch('http://localhost:3000/api/compras', {
+      const respuesta = await fetch(`${API_URL}/api/compras`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
