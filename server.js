@@ -48,21 +48,31 @@ app.get('/api/datos', async (req, res) => {
 // RUTA 2: Insertar un nuevo registro de Compra (POST)
 // -------------------------------------------------------------
 app.post('/api/compras', async (req, res) => {
-  const { proveedor, costo, categoria, producto, urlSaaS } = req.body
+  // Acepta fechaCompra o fecha desde el body de la petición
+  const { proveedor, costo, categoria, producto, urlSaaS, fechaCompra, fecha } = req.body
+  const valorFechaFinal = fechaCompra || fecha
+
+  console.log('--- NUEVO REGISTRO (POST) ---')
+  console.log('Datos recibidos:', { proveedor, costo, categoria, producto, urlSaaS, fechaCompra: valorFechaFinal })
 
   try {
     let pool = await sql.connect(config)
-    await pool.request()
+    let request = pool.request()
       .input('Proveedor', sql.NVarChar, proveedor)
       .input('Costo', sql.Decimal(10, 2), costo)
       .input('Categoria', sql.NVarChar, categoria)
       .input('Producto', sql.NVarChar, producto)
       .input('URL_SaaS', sql.NVarChar, urlSaaS)
-      .query(`
-        INSERT INTO Compras (Proveedor, Costo, Categoria, Producto, URL_SaaS, Fecha) 
-        VALUES (@Proveedor, @Costo, @Categoria, @Producto, @URL_SaaS, GETDATE())
-      `)
-    
+
+    // Validamos si llegó un valor de fecha manual
+    const fechaValida = (valorFechaFinal && String(valorFechaFinal).trim() !== '') ? valorFechaFinal : null
+    request.input('FechaCompra', sql.Date, fechaValida)
+
+    await request.query(`
+      INSERT INTO Compras (Proveedor, Costo, Categoria, Producto, URL_SaaS, FechaCompra, FechaCreacion) 
+      VALUES (@Proveedor, @Costo, @Categoria, @Producto, @URL_SaaS, @FechaCompra, CAST(GETDATE() AS DATE))
+    `)
+
     res.json({ mensaje: 'Registro guardado exitosamente' })
   } catch (error) {
     console.error('Error al insertar registro:', error.message)
@@ -75,7 +85,12 @@ app.post('/api/compras', async (req, res) => {
 // -------------------------------------------------------------
 app.put('/api/compras/:id', async (req, res) => {
   const { id } = req.params
-  const { proveedor, costo, categoria, producto, urlSaaS } = req.body
+  const { proveedor, costo, categoria, producto, urlSaaS, fechaCompra, fecha } = req.body
+  const valorFechaFinal = fechaCompra || fecha
+
+  console.log('--- ACTUALIZACIÓN DE REGISTRO (PUT) ---')
+  console.log('ID a modificar:', id)
+  console.log('Body recibido:', { proveedor, costo, categoria, producto, urlSaaS, fechaCompra: valorFechaFinal })
 
   const idNumero = parseInt(id, 10)
 
@@ -85,23 +100,31 @@ app.put('/api/compras/:id', async (req, res) => {
 
   try {
     let pool = await sql.connect(config)
-    await pool.request()
+    let request = pool.request()
       .input('ID', sql.Int, idNumero)
       .input('Proveedor', sql.NVarChar, proveedor)
       .input('Costo', sql.Decimal(10, 2), costo)
       .input('Categoria', sql.NVarChar, categoria)
       .input('Producto', sql.NVarChar, producto)
       .input('URL_SaaS', sql.NVarChar, urlSaaS)
-      .query(`
-        UPDATE Compras 
-        SET Proveedor = @Proveedor, 
-            Costo = @Costo, 
-            Categoria = @Categoria, 
-            Producto = @Producto, 
-            URL_SaaS = @URL_SaaS
-        WHERE Numero = @ID
-      `)
-    
+
+    const fechaValida = (valorFechaFinal && String(valorFechaFinal).trim() !== '') ? valorFechaFinal : null
+    request.input('FechaCompra', sql.Date, fechaValida)
+
+    const queryFinal = `
+      UPDATE Compras 
+      SET Proveedor = @Proveedor, 
+          Costo = @Costo, 
+          Categoria = @Categoria, 
+          Producto = @Producto, 
+          URL_SaaS = @URL_SaaS,
+          FechaCompra = @FechaCompra
+      WHERE Numero = @ID
+    `
+
+    const resultado = await request.query(queryFinal)
+    console.log('Filas afectadas:', resultado.rowsAffected[0])
+
     res.json({ mensaje: 'Registro actualizado exitosamente' })
   } catch (error) {
     console.error('Error al actualizar registro:', error.message)
