@@ -20,6 +20,13 @@ export default function App() {
   const [fechaCompra, setFechaCompra] = useState('')
   const [guardando, setGuardando] = useState(false)
 
+  // Columnas que NO se mostrarán en la tabla (compara ignorando mayúsculas/minúsculas)
+  const columnasOcultas = ['url_saas', 'urlsaas', 'fechacreacion', 'fecha_creacion']
+
+  const esColumnaOculta = (nombreColumna) => {
+    return columnasOcultas.includes(String(nombreColumna).toLowerCase())
+  }
+
   // Obtener lista de compras desde Azure SQL
   const obtenerCompras = () => {
     fetch(`${API_URL}/api/datos?t=${Date.now()}`)
@@ -43,7 +50,6 @@ export default function App() {
 
   // Cargar datos de la fila seleccionada en el formulario
   const iniciarEdicion = (fila) => {
-    // Detecta la llave primaria 'Numero' utilizada en Azure SQL
     const id = fila.Numero ?? fila.ID ?? fila.Id ?? fila.id
     setIdEditando(id)
     setProveedor(fila.Proveedor || fila.proveedor || '')
@@ -52,7 +58,6 @@ export default function App() {
     setProducto(fila.Producto || fila.producto || '')
     setUrlSaaS(fila.URL_SaaS || fila.urlSaaS || '')
 
-    // Buscar el valor en FechaCompra o Fecha (fallback)
     const valorFecha = fila.FechaCompra || fila.fechaCompra || fila.Fecha || fila.fecha
     if (valorFecha) {
       const fechaLimpia = String(valorFecha).split('T')[0]
@@ -116,7 +121,6 @@ export default function App() {
   const renderizarCelda = (columna, valor) => {
     if (valor === null || valor === undefined || valor === '') return '-'
 
-    // Columna de Blob Storage (soporta URLs con tokens SAS)
     if (columna === 'URL_SaaS') {
       const rutaLimpia = String(valor).split('?')[0].toLowerCase()
       const esImagen = /\.(jpeg|jpg|gif|png|webp|svg)$/.test(rutaLimpia)
@@ -136,13 +140,11 @@ export default function App() {
       }
     }
 
-    // Formato de moneda
     if (columna === 'Costo') {
       const numero = Number(valor)
       return isNaN(numero) ? valor : `$${numero.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
     }
 
-    // Formato para FechaCompra, FechaCreacion o cualquier columna Fecha
     if (columna.toLowerCase().includes('fecha')) {
       const fechaStr = String(valor).split('T')[0]
       const partes = fechaStr.split('-')
@@ -235,9 +237,11 @@ export default function App() {
         <table style={estilos.tabla}>
           <thead>
             <tr style={estilos.encabezadoTabla}>
-              {Object.keys(compras[0]).map((columna) => (
-                <th key={columna} style={estilos.th}>{columna}</th>
-              ))}
+              {Object.keys(compras[0])
+                .filter((columna) => !esColumnaOculta(columna))
+                .map((columna) => (
+                  <th key={columna} style={estilos.th}>{columna}</th>
+                ))}
               <th style={estilos.th}>Acciones</th>
             </tr>
           </thead>
@@ -246,11 +250,13 @@ export default function App() {
               const idFila = fila.Numero ?? fila.ID ?? fila.Id ?? index
               return (
                 <tr key={idFila} style={{ borderBottom: '1px solid #dee2e6' }}>
-                  {Object.entries(fila).map(([columna, valor], idx) => (
-                    <td style={{ padding: '12px', verticalAlign: 'middle' }} key={idx}>
-                      {renderizarCelda(columna, valor)}
-                    </td>
-                  ))}
+                  {Object.entries(fila)
+                    .filter(([columna]) => !esColumnaOculta(columna))
+                    .map(([columna, valor], idx) => (
+                      <td style={{ padding: '12px', verticalAlign: 'middle' }} key={idx}>
+                        {renderizarCelda(columna, valor)}
+                      </td>
+                    ))}
                   <td style={{ padding: '12px', verticalAlign: 'middle' }}>
                     <button 
                       onClick={() => iniciarEdicion(fila)} 
@@ -260,7 +266,7 @@ export default function App() {
                     </button>
                   </td>
                 </tr>
-              )
+              );
             })}
           </tbody>
         </table>
