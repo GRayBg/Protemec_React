@@ -1,6 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
-// URL base de la API backend
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 
 export default function App() {
@@ -17,17 +16,18 @@ export default function App() {
   const [categoria, setCategoria] = useState('')
   const [producto, setProducto] = useState('')
   const [urlSaaS, setUrlSaaS] = useState('')
+  const [archivoSeleccionado, setArchivoSeleccionado] = useState(null)
   const [fechaCompra, setFechaCompra] = useState('')
   const [guardando, setGuardando] = useState(false)
 
-  // Columnas que NO se mostrarán en la tabla (compara ignorando mayúsculas/minúsculas)
+  const fileInputRef = useRef(null)
+
   const columnasOcultas = ['url_saas', 'urlsaas', 'fechacreacion', 'fecha_creacion']
 
   const esColumnaOculta = (nombreColumna) => {
     return columnasOcultas.includes(String(nombreColumna).toLowerCase())
   }
 
-  // Obtener lista de compras desde Azure SQL
   const obtenerCompras = () => {
     fetch(`${API_URL}/api/datos?t=${Date.now()}`)
       .then((respuesta) => {
@@ -48,7 +48,6 @@ export default function App() {
     obtenerCompras()
   }, [])
 
-  // Cargar datos de la fila seleccionada en el formulario
   const iniciarEdicion = (fila) => {
     const id = fila.Numero ?? fila.ID ?? fila.Id ?? fila.id
     setIdEditando(id)
@@ -57,6 +56,11 @@ export default function App() {
     setCategoria(fila.Categoria || fila.categoria || '')
     setProducto(fila.Producto || fila.producto || '')
     setUrlSaaS(fila.URL_SaaS || fila.urlSaaS || '')
+    setArchivoSeleccionado(null)
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
 
     const valorFecha = fila.FechaCompra || fila.fechaCompra || fila.Fecha || fila.fecha
     if (valorFecha) {
@@ -67,7 +71,6 @@ export default function App() {
     }
   }
 
-  // Limpiar campos y salir del modo edición
   const cancelarEdicion = () => {
     setIdEditando(null)
     setProveedor('')
@@ -75,10 +78,13 @@ export default function App() {
     setCategoria('')
     setProducto('')
     setUrlSaaS('')
+    setArchivoSeleccionado(null)
     setFechaCompra('')
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
   }
 
-  // Enviar datos (POST para crear, PUT para actualizar)
   const manejarEnvio = async (e) => {
     e.preventDefault()
     setGuardando(true)
@@ -90,20 +96,23 @@ export default function App() {
     
     const metodo = esEdicion ? 'PUT' : 'POST'
 
-    const datosEnvio = {
-      proveedor,
-      costo: parseFloat(costo) || 0,
-      categoria,
-      producto,
-      urlSaaS,
-      fechaCompra: fechaCompra || null
+    // Construir FormData para enviar texto y archivo en una sola petición multipart
+    const formData = new FormData()
+    formData.append('proveedor', proveedor)
+    formData.append('costo', parseFloat(costo) || 0)
+    formData.append('categoria', categoria)
+    formData.append('producto', producto)
+    formData.append('urlSaaS', urlSaaS)
+    if (fechaCompra) formData.append('fechaCompra', fechaCompra)
+
+    if (archivoSeleccionado) {
+      formData.append('archivo', archivoSeleccionado)
     }
 
     try {
       const respuesta = await fetch(urlEndpoint, {
         method: metodo,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(datosEnvio)
+        body: formData // No es necesario header Content-Type, el navegador asigna multipart/form-data
       })
 
       if (!respuesta.ok) throw new Error(`Error al ${esEdicion ? 'actualizar' : 'guardar'} el registro`)
@@ -117,7 +126,6 @@ export default function App() {
     }
   }
 
-  // Renderizado dinámico de celdas según el tipo de columna
   const renderizarCelda = (columna, valor) => {
     if (valor === null || valor === undefined || valor === '') return '-'
 
@@ -127,14 +135,14 @@ export default function App() {
 
       if (esImagen) {
         return (
-          <a href={valor} target="_blank" rel="noopener noreferrer" title="Clic para ver en tamaño completo">
+          <a href={valor} target="_blank" rel="noopener noreferrer" title="Ver imagen en tamaño completo">
             <img src={valor} alt="Vista previa" style={estilos.imagenMiniatura} />
           </a>
         )
       } else {
         return (
           <a href={valor} target="_blank" rel="noopener noreferrer" style={estilos.enlaceBoton}>
-            📎 Ver Archivo
+            📎 Ver Documento / PDF
           </a>
         )
       }
@@ -164,7 +172,7 @@ export default function App() {
   return (
     <div style={{ padding: '30px', fontFamily: 'Segoe UI, sans-serif', maxWidth: '1200px', margin: '0 auto' }}>
       <h2>Módulo de Compras</h2>
-      <p style={{ color: '#666' }}>Consulta y registro en tiempo real sobre Azure SQL Database</p>
+      <p style={{ color: '#666' }}>Consulta y registro en tiempo real con Azure SQL y Blob Storage</p>
 
       {/* Formulario de Captura / Edición */}
       <form onSubmit={manejarEnvio} style={estilos.formulario}>
@@ -205,13 +213,21 @@ export default function App() {
             required
             style={estilos.input}
           />
-          <input 
-            type="text" 
-            placeholder="URL de Imagen / Archivo Blob" 
-            value={urlSaaS} 
-            onChange={(e) => setUrlSaaS(e.target.value)}
-            style={estilos.input}
-          />
+          
+          {/* Campo Selector de Archivo (PDF / Imagen) */}
+          <div style={{ flex: '1', minWidth: '220px' }}>
+            <label style={{ display: 'block', fontSize: '12px', marginBottom: '4px', color: '#ccc' }}>
+              {idEditando ? 'Reemplazar archivo (Opcional):' : 'Adjuntar Archivo / Factura:'}
+            </label>
+            <input 
+              ref={fileInputRef}
+              type="file" 
+              accept="image/*,application/pdf"
+              onChange={(e) => setArchivoSeleccionado(e.target.files[0])}
+              style={{ ...estilos.input, width: '100%' }}
+            />
+          </div>
+
           <input 
             type="date" 
             value={fechaCompra} 
@@ -219,9 +235,11 @@ export default function App() {
             title="Fecha de la Compra (Opcional)"
             style={estilos.input}
           />
+
           <button type="submit" disabled={guardando} style={idEditando ? estilos.botonEditar : estilos.botonGuardar}>
-            {guardando ? 'Guardando...' : idEditando ? '💾 Actualizar' : '💾 Guardar Registro'}
+            {guardando ? 'Subiendo datos...' : idEditando ? '💾 Actualizar' : '💾 Guardar Registro'}
           </button>
+
           {idEditando && (
             <button type="button" onClick={cancelarEdicion} style={estilos.botonCancelar}>
               ❌ Cancelar
@@ -277,15 +295,15 @@ export default function App() {
 
 const estilos = {
   formulario: { backgroundColor: '#1e1e1e', color: '#fff', padding: '20px', borderRadius: '8px', marginBottom: '30px' },
-  grupoInputs: { display: 'flex', gap: '10px', flexWrap: 'wrap' },
-  input: { flex: '1', minWidth: '150px', padding: '10px', borderRadius: '4px', border: '1px solid #444', backgroundColor: '#2d2d2d', color: '#fff', fontSize: '14px' },
-  botonGuardar: { backgroundColor: '#28a745', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' },
-  botonEditar: { backgroundColor: '#007bff', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' },
-  botonCancelar: { backgroundColor: '#6c757d', color: 'white', border: 'none', padding: '10px 15px', borderRadius: '4px', cursor: 'pointer' },
+  grupoInputs: { display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-end' },
+  input: { flex: '1', minWidth: '150px', padding: '10px', borderRadius: '4px', border: '1px solid #444', backgroundColor: '#2d2d2d', color: '#fff', fontSize: '14px', boxSizing: 'border-box' },
+  botonGuardar: { backgroundColor: '#28a745', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', height: '40px' },
+  botonEditar: { backgroundColor: '#007bff', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', height: '40px' },
+  botonCancelar: { backgroundColor: '#6c757d', color: 'white', border: 'none', padding: '10px 15px', borderRadius: '4px', cursor: 'pointer', height: '40px' },
   botonAccionEditar: { backgroundColor: '#ffc107', color: '#212529', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: '500', fontSize: '13px' },
   tabla: { width: '100%', borderCollapse: 'collapse', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' },
   encabezadoTabla: { backgroundColor: '#f8f9fa', borderBottom: '2px solid #dee2e6', textAlign: 'left' },
   th: { padding: '12px', color: '#495057' },
-  imagenMiniatura: { width: '60px', height: '60px', objectFit: 'cover', borderRadius: '6px', border: '1px solid #ccc', cursor: 'pointer', transition: 'transform 0.2s' },
+  imagenMiniatura: { width: '60px', height: '60px', objectFit: 'cover', borderRadius: '6px', border: '1px solid #ccc', cursor: 'pointer' },
   enlaceBoton: { color: '#007bff', textDecoration: 'none', fontWeight: '500', fontSize: '14px' }
 }
