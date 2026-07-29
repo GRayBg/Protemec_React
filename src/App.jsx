@@ -22,11 +22,16 @@ export default function App() {
 
   const fileInputRef = useRef(null)
 
-  const columnasOcultas = ['url_saas', 'urlsaas', 'fechacreacion', 'fecha_creacion']
+  const columnasOcultas = ['fechacreacion', 'fecha_creacion']
 
   const esColumnaOculta = (nombreColumna) => {
     return columnasOcultas.includes(String(nombreColumna).toLowerCase())
   }
+
+  // Listas de valores únicos autogenerados para el autocompletado
+  const proveedoresUnicos = [...new Set(compras.map(c => c.Proveedor || c.proveedor).filter(Boolean))]
+  const categoriasUnicas = [...new Set(compras.map(c => c.Categoria || c.categoria).filter(Boolean))]
+  const productosUnicos = [...new Set(compras.map(c => c.Producto || c.producto).filter(Boolean))]
 
   const obtenerCompras = () => {
     fetch(`${API_URL}/api/datos?t=${Date.now()}`)
@@ -55,7 +60,7 @@ export default function App() {
     setCosto(fila.Costo || fila.costo || '')
     setCategoria(fila.Categoria || fila.categoria || '')
     setProducto(fila.Producto || fila.producto || '')
-    setUrlSaaS(fila.URL_SaaS || fila.urlSaaS || '')
+    setUrlSaaS(fila.URL_SaaS || fila.urlSaaS || fila.url_saas || '')
     setArchivoSeleccionado(null)
 
     if (fileInputRef.current) {
@@ -96,7 +101,6 @@ export default function App() {
     
     const metodo = esEdicion ? 'PUT' : 'POST'
 
-    // Construir FormData para enviar texto y archivo en una sola petición multipart
     const formData = new FormData()
     formData.append('proveedor', proveedor)
     formData.append('costo', parseFloat(costo) || 0)
@@ -112,7 +116,7 @@ export default function App() {
     try {
       const respuesta = await fetch(urlEndpoint, {
         method: metodo,
-        body: formData // No es necesario header Content-Type, el navegador asigna multipart/form-data
+        body: formData
       })
 
       if (!respuesta.ok) throw new Error(`Error al ${esEdicion ? 'actualizar' : 'guardar'} el registro`)
@@ -129,7 +133,9 @@ export default function App() {
   const renderizarCelda = (columna, valor) => {
     if (valor === null || valor === undefined || valor === '') return '-'
 
-    if (columna === 'URL_SaaS') {
+    const colLower = columna.toLowerCase()
+
+    if (colLower === 'url_saas' || colLower === 'urlsaas') {
       const rutaLimpia = String(valor).split('?')[0].toLowerCase()
       const esImagen = /\.(jpeg|jpg|gif|png|webp|svg)$/.test(rutaLimpia)
 
@@ -141,19 +147,19 @@ export default function App() {
         )
       } else {
         return (
-          <a href={valor} target="_blank" rel="noopener noreferrer" style={estilos.enlaceBoton}>
-            📎 Ver Documento / PDF
+          <a href={valor} target="_blank" rel="noopener noreferrer" style={estilos.botonAccionVer}>
+            📄 Abrir documento
           </a>
         )
       }
     }
 
-    if (columna === 'Costo') {
+    if (colLower === 'costo') {
       const numero = Number(valor)
       return isNaN(numero) ? valor : `$${numero.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
     }
 
-    if (columna.toLowerCase().includes('fecha')) {
+    if (colLower.includes('fecha')) {
       const fechaStr = String(valor).split('T')[0]
       const partes = fechaStr.split('-')
       if (partes.length === 3) {
@@ -180,14 +186,23 @@ export default function App() {
           {idEditando ? `✏️ Modificar Registro #${idEditando}` : '➕ Registrar Nueva Compra'}
         </h3>
         <div style={estilos.grupoInputs}>
+          
+          {/* Campo Proveedor con Datalist */}
           <input 
             type="text" 
+            list="lista-proveedores"
             placeholder="Proveedor" 
             value={proveedor} 
             onChange={(e) => setProveedor(e.target.value)}
             required
             style={estilos.input}
           />
+          <datalist id="lista-proveedores">
+            {proveedoresUnicos.map((p, idx) => (
+              <option key={idx} value={p} />
+            ))}
+          </datalist>
+
           <input 
             type="number" 
             step="0.01" 
@@ -197,24 +212,39 @@ export default function App() {
             required
             style={estilos.input}
           />
+
+          {/* Campo Categoría con Datalist */}
           <input 
             type="text" 
+            list="lista-categorias"
             placeholder="Categoría" 
             value={categoria} 
             onChange={(e) => setCategoria(e.target.value)}
             required
             style={estilos.input}
           />
+          <datalist id="lista-categorias">
+            {categoriasUnicas.map((c, idx) => (
+              <option key={idx} value={c} />
+            ))}
+          </datalist>
+
+          {/* Campo Producto con Datalist */}
           <input 
             type="text" 
+            list="lista-productos"
             placeholder="Producto" 
             value={producto} 
             onChange={(e) => setProducto(e.target.value)}
             required
             style={estilos.input}
           />
+          <datalist id="lista-productos">
+            {productosUnicos.map((prod, idx) => (
+              <option key={idx} value={prod} />
+            ))}
+          </datalist>
           
-          {/* Campo Selector de Archivo (PDF / Imagen) */}
           <div style={{ flex: '1', minWidth: '220px' }}>
             <label style={{ display: 'block', fontSize: '12px', marginBottom: '4px', color: '#ccc' }}>
               {idEditando ? 'Reemplazar archivo (Opcional):' : 'Adjuntar Archivo / Factura:'}
@@ -257,15 +287,20 @@ export default function App() {
             <tr style={estilos.encabezadoTabla}>
               {Object.keys(compras[0])
                 .filter((columna) => !esColumnaOculta(columna))
-                .map((columna) => (
-                  <th key={columna} style={estilos.th}>{columna}</th>
-                ))}
+                .map((columna) => {
+                  const colLower = columna.toLowerCase()
+                  const tituloColumna = (colLower === 'url_saas' || colLower === 'urlsaas') ? 'Documento' : columna;
+                  
+                  return <th key={columna} style={estilos.th}>{tituloColumna}</th>
+                })}
               <th style={estilos.th}>Acciones</th>
             </tr>
           </thead>
           <tbody>
             {compras.map((fila, index) => {
               const idFila = fila.Numero ?? fila.ID ?? fila.Id ?? index
+              const estaEditandoEstaFila = idEditando === idFila
+
               return (
                 <tr key={idFila} style={{ borderBottom: '1px solid #dee2e6' }}>
                   {Object.entries(fila)
@@ -278,9 +313,9 @@ export default function App() {
                   <td style={{ padding: '12px', verticalAlign: 'middle' }}>
                     <button 
                       onClick={() => iniciarEdicion(fila)} 
-                      style={estilos.botonAccionEditar}
+                      style={estaEditandoEstaFila ? estilos.botonAccionEditando : estilos.botonAccionEditar}
                     >
-                      ✏️ Editar
+                      {estaEditandoEstaFila ? '✏️ Editando...' : '✏️ Editar'}
                     </button>
                   </td>
                 </tr>
@@ -300,10 +335,11 @@ const estilos = {
   botonGuardar: { backgroundColor: '#28a745', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', height: '40px' },
   botonEditar: { backgroundColor: '#007bff', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', height: '40px' },
   botonCancelar: { backgroundColor: '#6c757d', color: 'white', border: 'none', padding: '10px 15px', borderRadius: '4px', cursor: 'pointer', height: '40px' },
-  botonAccionEditar: { backgroundColor: '#ffc107', color: '#212529', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: '500', fontSize: '13px' },
+  botonAccionEditar: { backgroundColor: '#ffc107', color: '#212529', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: '500', fontSize: '13px', textDecoration: 'none' },
+  botonAccionEditando: { backgroundColor: '#fd7e14', color: '#ffffff', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', textDecoration: 'none' },
+  botonAccionVer: { backgroundColor: '#17a2b8', color: '#fff', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: '500', fontSize: '13px', textDecoration: 'none', display: 'inline-block' },
   tabla: { width: '100%', borderCollapse: 'collapse', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' },
   encabezadoTabla: { backgroundColor: '#f8f9fa', borderBottom: '2px solid #dee2e6', textAlign: 'left' },
   th: { padding: '12px', color: '#495057' },
-  imagenMiniatura: { width: '60px', height: '60px', objectFit: 'cover', borderRadius: '6px', border: '1px solid #ccc', cursor: 'pointer' },
-  enlaceBoton: { color: '#007bff', textDecoration: 'none', fontWeight: '500', fontSize: '14px' }
+  imagenMiniatura: { width: '60px', height: '60px', objectFit: 'cover', borderRadius: '6px', border: '1px solid #ccc', cursor: 'pointer' }
 }
