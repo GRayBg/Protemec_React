@@ -1,47 +1,40 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
+import FormularioCompra from './components/FormularioCompra'
+import VistaConsulta from './components/VistaConsulta'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 
 export default function App() {
+  const [pestanaActiva, setPestanaActiva] = useState('consulta')
   const [compras, setCompras] = useState([])
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState(null)
 
-  // Estado para controlar el registro en edición
+  // Estados compartidos para el Formulario
   const [idEditando, setIdEditando] = useState(null)
-
-  // Estados del formulario
   const [proveedor, setProveedor] = useState('')
   const [costo, setCosto] = useState('')
   const [categoria, setCategoria] = useState('')
   const [producto, setProducto] = useState('')
-  const [proyecto, setProyecto] = useState('')               // 🆕 NUEVO
-  const [precioUnitario, setPrecioUnitario] = useState('')   // 🆕 NUEVO
-  const [cantidad, setCantidad] = useState('')               // 🆕 NUEVO
+  const [proyecto, setProyecto] = useState('')
+  const [precioUnitario, setPrecioUnitario] = useState('')
+  const [cantidad, setCantidad] = useState('')
   const [urlSaaS, setUrlSaaS] = useState('')
   const [archivoSeleccionado, setArchivoSeleccionado] = useState(null)
   const [fechaCompra, setFechaCompra] = useState('')
   const [guardando, setGuardando] = useState(false)
 
-  const fileInputRef = useRef(null)
-
-  const columnasOcultas = ['fechacreacion', 'fecha_creacion']
-
-  const esColumnaOculta = (nombreColumna) => {
-    return columnasOcultas.includes(String(nombreColumna).toLowerCase())
-  }
-
-  // Listas de valores únicos autogenerados para el autocompletado
+  // Listas únicas
   const proveedoresUnicos = [...new Set(compras.map(c => c.Proveedor || c.proveedor).filter(Boolean))]
   const categoriasUnicas = [...new Set(compras.map(c => c.Categoria || c.categoria).filter(Boolean))]
   const productosUnicos = [...new Set(compras.map(c => c.Producto || c.producto).filter(Boolean))]
-  const proyectosUnicos = [...new Set(compras.map(c => c.Proyecto || c.proyecto).filter(Boolean))] // 🆕 NUEVO
+  const proyectosUnicos = [...new Set(compras.map(c => c.Proyecto || c.proyecto).filter(Boolean))]
 
   const obtenerCompras = () => {
     fetch(`${API_URL}/api/datos?t=${Date.now()}`)
-      .then((respuesta) => {
-        if (!respuesta.ok) throw new Error('Error al consultar la API')
-        return respuesta.json()
+      .then((res) => {
+        if (!res.ok) throw new Error('Error al consultar la API')
+        return res.json()
       })
       .then((datos) => {
         setCompras(datos)
@@ -64,23 +57,15 @@ export default function App() {
     setCosto(fila.Costo || fila.costo || '')
     setCategoria(fila.Categoria || fila.categoria || '')
     setProducto(fila.Producto || fila.producto || '')
-    setProyecto(fila.Proyecto || fila.proyecto || '')                   // 🆕 NUEVO
-    setPrecioUnitario(fila.PrecioUnitario || fila.precioUnitario || '') // 🆕 NUEVO
-    setCantidad(fila.Cantidad || fila.cantidad || '')                   // 🆕 NUEVO
+    setProyecto(fila.Proyecto || fila.proyecto || '')
+    setPrecioUnitario(fila.PrecioUnitario || fila.precioUnitario || '')
+    setCantidad(fila.Cantidad || fila.cantidad || '')
     setUrlSaaS(fila.URL_SaaS || fila.urlSaaS || fila.url_saas || '')
     setArchivoSeleccionado(null)
 
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ''
-    }
-
     const valorFecha = fila.FechaCompra || fila.fechaCompra || fila.Fecha || fila.fecha
-    if (valorFecha) {
-      const fechaLimpia = String(valorFecha).split('T')[0]
-      setFechaCompra(fechaLimpia)
-    } else {
-      setFechaCompra('')
-    }
+    setFechaCompra(valorFecha ? String(valorFecha).split('T')[0] : '')
+    setPestanaActiva('captura')
   }
 
   const cancelarEdicion = () => {
@@ -89,15 +74,12 @@ export default function App() {
     setCosto('')
     setCategoria('')
     setProducto('')
-    setProyecto('')        // 🆕 NUEVO
-    setPrecioUnitario('')  // 🆕 NUEVO
-    setCantidad('')        // 🆕 NUEVO
+    setProyecto('')
+    setPrecioUnitario('')
+    setCantidad('')
     setUrlSaaS('')
     setArchivoSeleccionado(null)
     setFechaCompra('')
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ''
-    }
   }
 
   const manejarEnvio = async (e) => {
@@ -105,10 +87,7 @@ export default function App() {
     setGuardando(true)
 
     const esEdicion = idEditando !== null
-    const urlEndpoint = esEdicion 
-      ? `${API_URL}/api/compras/${idEditando}`
-      : `${API_URL}/api/compras`
-    
+    const urlEndpoint = esEdicion ? `${API_URL}/api/compras/${idEditando}` : `${API_URL}/api/compras`
     const metodo = esEdicion ? 'PUT' : 'POST'
 
     const formData = new FormData()
@@ -116,74 +95,25 @@ export default function App() {
     formData.append('costo', parseFloat(costo) || 0)
     formData.append('categoria', categoria)
     formData.append('producto', producto)
-    formData.append('proyecto', proyecto)                                 // 🆕 NUEVO
-    formData.append('precioUnitario', parseFloat(precioUnitario) || 0)   // 🆕 NUEVO
-    formData.append('cantidad', parseInt(cantidad, 10) || 0)             // 🆕 NUEVO
+    formData.append('proyecto', proyecto)
+    formData.append('precioUnitario', parseFloat(precioUnitario) || 0)
+    formData.append('cantidad', parseInt(cantidad, 10) || 0)
     formData.append('urlSaaS', urlSaaS)
     if (fechaCompra) formData.append('fechaCompra', fechaCompra)
-
-    if (archivoSeleccionado) {
-      formData.append('archivo', archivoSeleccionado)
-    }
+    if (archivoSeleccionado) formData.append('archivo', archivoSeleccionado)
 
     try {
-      const respuesta = await fetch(urlEndpoint, {
-        method: metodo,
-        body: formData
-      })
-
+      const respuesta = await fetch(urlEndpoint, { method: metodo, body: formData })
       if (!respuesta.ok) throw new Error(`Error al ${esEdicion ? 'actualizar' : 'guardar'} el registro`)
 
       cancelarEdicion()
       setGuardando(false)
       obtenerCompras()
+      setPestanaActiva('consulta')
     } catch (err) {
       alert('Error: ' + err.message)
       setGuardando(false)
     }
-  }
-
-  const renderizarCelda = (columna, valor) => {
-    if (valor === null || valor === undefined || valor === '') return '-'
-
-    const colLower = columna.toLowerCase()
-
-    if (colLower === 'url_saas' || colLower === 'urlsaas') {
-      const rutaLimpia = String(valor).split('?')[0].toLowerCase()
-      const esImagen = /\.(jpeg|jpg|gif|png|webp|svg)$/.test(rutaLimpia)
-
-      if (esImagen) {
-        return (
-          <a href={valor} target="_blank" rel="noopener noreferrer" title="Ver imagen en tamaño completo">
-            <img src={valor} alt="Vista previa" style={estilos.imagenMiniatura} />
-          </a>
-        )
-      } else {
-        return (
-          <a href={valor} target="_blank" rel="noopener noreferrer" style={estilos.botonAccionVer}>
-            📄 Abrir documento
-          </a>
-        )
-      }
-    }
-
-    // Formato de moneda para Costo y PrecioUnitario
-    if (colLower === 'costo' || colLower === 'preciounitario') {
-      const numero = Number(valor)
-      return isNaN(numero) ? valor : `$${numero.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-    }
-
-    if (colLower.includes('fecha')) {
-      const fechaStr = String(valor).split('T')[0]
-      const partes = fechaStr.split('-')
-      if (partes.length === 3) {
-        const [anio, mes, dia] = partes
-        return `${dia}/${mes}/${anio}`
-      }
-      return String(valor)
-    }
-
-    return String(valor)
   }
 
   if (cargando) return <div style={{ padding: '40px', fontFamily: 'sans-serif' }}>⌛ Conectando a Azure SQL...</div>
@@ -192,215 +122,61 @@ export default function App() {
   return (
     <div style={{ padding: '30px', fontFamily: 'Segoe UI, sans-serif', maxWidth: '1400px', margin: '0 auto' }}>
       <h2>Módulo de Compras</h2>
-      <p style={{ color: '#666' }}>Consulta y registro en tiempo real con Azure SQL y Blob Storage</p>
+      <p style={{ color: '#666' }}>Sistema de gestión de compras integrando Azure SQL y Blob Storage</p>
 
-      {/* Formulario de Captura / Edición */}
-      <form onSubmit={manejarEnvio} style={estilos.formulario}>
-        <h3 style={{ marginTop: 0, marginBottom: '15px' }}>
-          {idEditando ? `✏️ Modificar Registro #${idEditando}` : '➕ Registrar Nueva Compra'}
-        </h3>
-        <div style={estilos.grupoInputs}>
-          
-          {/* Campo Proveedor */}
-          <input 
-            type="text" 
-            list="lista-proveedores"
-            placeholder="Proveedor" 
-            value={proveedor} 
-            onChange={(e) => setProveedor(e.target.value)}
-            required
-            style={estilos.input}
-          />
-          <datalist id="lista-proveedores">
-            {proveedoresUnicos.map((p, idx) => (
-              <option key={idx} value={p} />
-            ))}
-          </datalist>
+      {/* Navegación por pestañas */}
+      <div style={estilos.contenedorPestanas}>
+        <button 
+          onClick={() => setPestanaActiva('consulta')}
+          style={pestanaActiva === 'consulta' ? estilos.pestanaActiva : estilos.pestanaInactiva}
+        >
+          🔍 Vista de Consulta y Filtros
+        </button>
+        <button 
+          onClick={() => { setPestanaActiva('captura'); if (!idEditando) cancelarEdicion(); }}
+          style={pestanaActiva === 'captura' ? estilos.pestanaActiva : estilos.pestanaInactiva}
+        >
+          {idEditando ? `✏️ Editando #${idEditando}` : '➕ Registro / Captura'}
+        </button>
+      </div>
 
-          {/* Campo Proyecto - 🆕 NUEVO */}
-          <input 
-            type="text" 
-            list="lista-proyectos"
-            placeholder="Proyecto" 
-            value={proyecto} 
-            onChange={(e) => setProyecto(e.target.value)}
-            style={estilos.input}
-          />
-          <datalist id="lista-proyectos">
-            {proyectosUnicos.map((proj, idx) => (
-              <option key={idx} value={proj} />
-            ))}
-          </datalist>
-
-          {/* Campo Categoría */}
-          <input 
-            type="text" 
-            list="lista-categorias"
-            placeholder="Categoría" 
-            value={categoria} 
-            onChange={(e) => setCategoria(e.target.value)}
-            required
-            style={estilos.input}
-          />
-          <datalist id="lista-categorias">
-            {categoriasUnicas.map((c, idx) => (
-              <option key={idx} value={c} />
-            ))}
-          </datalist>
-
-          {/* Campo Producto */}
-          <input 
-            type="text" 
-            list="lista-productos"
-            placeholder="Producto" 
-            value={producto} 
-            onChange={(e) => setProducto(e.target.value)}
-            required
-            style={estilos.input}
-          />
-          <datalist id="lista-productos">
-            {productosUnicos.map((prod, idx) => (
-              <option key={idx} value={prod} />
-            ))}
-          </datalist>
-
-          {/* Campo Cantidad - 🆕 NUEVO */}
-          <input 
-            type="number" 
-            placeholder="Cantidad" 
-            value={cantidad} 
-            onChange={(e) => {
-              const cant = e.target.value
-              setCantidad(cant)
-              if (precioUnitario && cant) {
-                setCosto((parseFloat(precioUnitario) * parseFloat(cant)).toFixed(2))
-              }
-            }}
-            style={estilos.input}
-          />
-
-          {/* Campo Precio Unitario - 🆕 NUEVO */}
-          <input 
-            type="number" 
-            step="0.01" 
-            placeholder="Precio Unitario ($)" 
-            value={precioUnitario} 
-            onChange={(e) => {
-              const pu = e.target.value
-              setPrecioUnitario(pu)
-              if (cantidad && pu) {
-                setCosto((parseFloat(pu) * parseFloat(cantidad)).toFixed(2))
-              }
-            }}
-            style={estilos.input}
-          />
-
-          {/* Campo Costo Total */}
-          <input 
-            type="number" 
-            step="0.01" 
-            placeholder="Costo Total ($)" 
-            value={costo} 
-            onChange={(e) => setCosto(e.target.value)}
-            required
-            style={estilos.input}
-          />
-          
-          <div style={{ flex: '1', minWidth: '220px' }}>
-            <label style={{ display: 'block', fontSize: '12px', marginBottom: '4px', color: '#ccc' }}>
-              {idEditando ? 'Reemplazar archivo (Opcional):' : 'Adjuntar Archivo / Factura:'}
-            </label>
-            <input 
-              ref={fileInputRef}
-              type="file" 
-              accept="image/*,application/pdf"
-              onChange={(e) => setArchivoSeleccionado(e.target.files[0])}
-              style={{ ...estilos.input, width: '100%' }}
-            />
-          </div>
-
-          <input 
-            type="date" 
-            value={fechaCompra} 
-            onChange={(e) => setFechaCompra(e.target.value)}
-            title="Fecha de la Compra (Opcional)"
-            style={estilos.input}
-          />
-
-          <button type="submit" disabled={guardando} style={idEditando ? estilos.botonEditar : estilos.botonGuardar}>
-            {guardando ? 'Subiendo datos...' : idEditando ? '💾 Actualizar' : '💾 Guardar Registro'}
-          </button>
-
-          {idEditando && (
-            <button type="button" onClick={cancelarEdicion} style={estilos.botonCancelar}>
-              ❌ Cancelar
-            </button>
-          )}
-        </div>
-      </form>
-
-      {/* Tabla de Registros */}
-      {compras.length === 0 ? (
-        <p>No se encontraron registros en la tabla Compras.</p>
+      {/* Renderizado Condicional de Componentes */}
+      {pestanaActiva === 'consulta' ? (
+        <VistaConsulta 
+          compras={compras}
+          iniciarEdicion={iniciarEdicion}
+          proveedoresUnicos={proveedoresUnicos}
+          categoriasUnicas={categoriasUnicas}
+          proyectosUnicos={proyectosUnicos}
+        />
       ) : (
-        <table style={estilos.tabla}>
-          <thead>
-            <tr style={estilos.encabezadoTabla}>
-              {Object.keys(compras[0])
-                .filter((columna) => !esColumnaOculta(columna))
-                .map((columna) => {
-                  const colLower = columna.toLowerCase()
-                  const tituloColumna = (colLower === 'url_saas' || colLower === 'urlsaas') ? 'Documento' : columna;
-                  
-                  return <th key={columna} style={estilos.th}>{tituloColumna}</th>
-                })}
-              <th style={estilos.th}>Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            {compras.map((fila, index) => {
-              const idFila = fila.Numero ?? fila.ID ?? fila.Id ?? index
-              const estaEditandoEstaFila = idEditando === idFila
-
-              return (
-                <tr key={idFila} style={{ borderBottom: '1px solid #dee2e6' }}>
-                  {Object.entries(fila)
-                    .filter(([columna]) => !esColumnaOculta(columna))
-                    .map(([columna, valor], idx) => (
-                      <td style={{ padding: '12px', verticalAlign: 'middle' }} key={idx}>
-                        {renderizarCelda(columna, valor)}
-                      </td>
-                    ))}
-                  <td style={{ padding: '12px', verticalAlign: 'middle' }}>
-                    <button 
-                      onClick={() => iniciarEdicion(fila)} 
-                      style={estaEditandoEstaFila ? estilos.botonAccionEditando : estilos.botonAccionEditar}
-                    >
-                      {estaEditandoEstaFila ? '✏️ Editando...' : '✏️ Editar'}
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        <FormularioCompra 
+          idEditando={idEditando}
+          proveedor={proveedor} setProveedor={setProveedor}
+          costo={costo} setCosto={setCosto}
+          categoria={categoria} setCategoria={setCategoria}
+          producto={producto} setProducto={setProducto}
+          proyecto={proyecto} setProyecto={setProyecto}
+          precioUnitario={precioUnitario} setPrecioUnitario={setPrecioUnitario}
+          cantidad={cantidad} setCantidad={setCantidad}
+          urlSaaS={urlSaaS}
+          fechaCompra={fechaCompra} setFechaCompra={setFechaCompra}
+          setArchivoSeleccionado={setArchivoSeleccionado}
+          guardando={guardando}
+          manejarEnvio={manejarEnvio}
+          cancelarEdicion={() => { cancelarEdicion(); setPestanaActiva('consulta'); }}
+          proveedoresUnicos={proveedoresUnicos}
+          categoriasUnicas={categoriasUnicas}
+          productosUnicos={productosUnicos}
+          proyectosUnicos={proyectosUnicos}
+        />
       )}
     </div>
   )
 }
 
 const estilos = {
-  formulario: { backgroundColor: '#1e1e1e', color: '#fff', padding: '20px', borderRadius: '8px', marginBottom: '30px' },
-  grupoInputs: { display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-end' },
-  input: { flex: '1', minWidth: '140px', padding: '10px', borderRadius: '4px', border: '1px solid #444', backgroundColor: '#2d2d2d', color: '#fff', fontSize: '14px', boxSizing: 'border-box' },
-  botonGuardar: { backgroundColor: '#28a745', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', height: '40px' },
-  botonEditar: { backgroundColor: '#007bff', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', height: '40px' },
-  botonCancelar: { backgroundColor: '#6c757d', color: 'white', border: 'none', padding: '10px 15px', borderRadius: '4px', cursor: 'pointer', height: '40px' },
-  botonAccionEditar: { backgroundColor: '#ffc107', color: '#212529', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: '500', fontSize: '13px', textDecoration: 'none' },
-  botonAccionEditando: { backgroundColor: '#fd7e14', color: '#ffffff', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', textDecoration: 'none' },
-  botonAccionVer: { backgroundColor: '#17a2b8', color: '#fff', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: '500', fontSize: '13px', textDecoration: 'none', display: 'inline-block' },
-  tabla: { width: '100%', borderCollapse: 'collapse', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' },
-  encabezadoTabla: { backgroundColor: '#f8f9fa', borderBottom: '2px solid #dee2e6', textAlign: 'left' },
-  th: { padding: '12px', color: '#495057' },
-  imagenMiniatura: { width: '60px', height: '60px', objectFit: 'cover', borderRadius: '6px', border: '1px solid #ccc', cursor: 'pointer' }
+  contenedorPestanas: { display: 'flex', gap: '10px', marginBottom: '20px', borderBottom: '2px solid #e0e0e0', paddingBottom: '10px' },
+  pestanaActiva: { backgroundColor: '#007bff', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' },
+  pestanaInactiva: { backgroundColor: '#e9ecef', color: '#495057', border: 'none', padding: '10px 20px', borderRadius: '6px', fontWeight: '500', cursor: 'pointer' }
 }
