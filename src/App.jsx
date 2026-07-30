@@ -1,16 +1,23 @@
 import { useState, useEffect } from 'react'
 import FormularioCompra from './components/FormularioCompra'
 import VistaConsulta from './components/VistaConsulta'
+import GestionClientes from './components/GestionClientes'
+import GestionUbicaciones from './components/GestionUbicaciones'
+import GestionProyectos from './components/GestionProyectos'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 
 export default function App() {
   const [pestanaActiva, setPestanaActiva] = useState('consulta')
   const [compras, setCompras] = useState([])
+  const [clientes, setClientes] = useState([])
+  const [ubicaciones, setUbicaciones] = useState([])
+  const [contactos, setContactos] = useState([])
+  const [proyectos, setProyectos] = useState([])
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState(null)
 
-  // Estados compartidos para el Formulario
+  // Estados del Formulario de Compras
   const [idEditando, setIdEditando] = useState(null)
   const [proveedor, setProveedor] = useState('')
   const [costo, setCosto] = useState('')
@@ -19,36 +26,44 @@ export default function App() {
   const [proyecto, setProyecto] = useState('')
   const [precioUnitario, setPrecioUnitario] = useState('')
   const [cantidad, setCantidad] = useState('')
+  const [estatus, setEstatus] = useState('Comprado')
   const [urlSaaS, setUrlSaaS] = useState('')
   const [archivoSeleccionado, setArchivoSeleccionado] = useState(null)
   const [fechaCompra, setFechaCompra] = useState('')
   const [guardando, setGuardando] = useState(false)
 
-  // Listas únicas
+  const cargarTodo = async () => {
+    try {
+      const [resCompras, resClientes, resUbicaciones, resContactos, resProyectos] = await Promise.all([
+        fetch(`${API_URL}/api/datos?t=${Date.now()}`),
+        fetch(`${API_URL}/api/clientes?t=${Date.now()}`),
+        fetch(`${API_URL}/api/ubicaciones?t=${Date.now()}`),
+        fetch(`${API_URL}/api/contactos?t=${Date.now()}`),
+        fetch(`${API_URL}/api/proyectos?t=${Date.now()}`)
+      ])
+
+      if (!resCompras.ok || !resClientes.ok || !resUbicaciones.ok || !resContactos.ok || !resProyectos.ok) {
+        throw new Error('Error al conectar con los servicios backend')
+      }
+
+      setCompras(await resCompras.json())
+      setClientes(await resClientes.json())
+      setUbicaciones(await resUbicaciones.json())
+      setContactos(await resContactos.json())
+      setProyectos(await resProyectos.json())
+      setCargando(false)
+    } catch (err) {
+      setError(err.message)
+      setCargando(false)
+    }
+  }
+
+  useEffect(() => { cargarTodo() }, [])
+
   const proveedoresUnicos = [...new Set(compras.map(c => c.Proveedor || c.proveedor).filter(Boolean))]
   const categoriasUnicas = [...new Set(compras.map(c => c.Categoria || c.categoria).filter(Boolean))]
   const productosUnicos = [...new Set(compras.map(c => c.Producto || c.producto).filter(Boolean))]
-  const proyectosUnicos = [...new Set(compras.map(c => c.Proyecto || c.proyecto).filter(Boolean))]
-
-  const obtenerCompras = () => {
-    fetch(`${API_URL}/api/datos?t=${Date.now()}`)
-      .then((res) => {
-        if (!res.ok) throw new Error('Error al consultar la API')
-        return res.json()
-      })
-      .then((datos) => {
-        setCompras(datos)
-        setCargando(false)
-      })
-      .catch((err) => {
-        setError(err.message)
-        setCargando(false)
-      })
-  }
-
-  useEffect(() => {
-    obtenerCompras()
-  }, [])
+  const proyectosUnicos = proyectos.map(p => p.NombreProyecto)
 
   const iniciarEdicion = (fila) => {
     const id = fila.Numero ?? fila.ID ?? fila.Id ?? fila.id
@@ -60,6 +75,7 @@ export default function App() {
     setProyecto(fila.Proyecto || fila.proyecto || '')
     setPrecioUnitario(fila.PrecioUnitario || fila.precioUnitario || '')
     setCantidad(fila.Cantidad || fila.cantidad || '')
+    setEstatus(fila.Estatus || fila.estatus || 'Comprado')
     setUrlSaaS(fila.URL_SaaS || fila.urlSaaS || fila.url_saas || '')
     setArchivoSeleccionado(null)
 
@@ -70,16 +86,9 @@ export default function App() {
 
   const cancelarEdicion = () => {
     setIdEditando(null)
-    setProveedor('')
-    setCosto('')
-    setCategoria('')
-    setProducto('')
-    setProyecto('')
-    setPrecioUnitario('')
-    setCantidad('')
-    setUrlSaaS('')
-    setArchivoSeleccionado(null)
-    setFechaCompra('')
+    setProveedor(''); setCosto(''); setCategoria(''); setProducto('')
+    setProyecto(''); setPrecioUnitario(''); setCantidad(''); setEstatus('Comprado')
+    setUrlSaaS(''); setArchivoSeleccionado(null); setFechaCompra('')
   }
 
   const manejarEnvio = async (e) => {
@@ -98,17 +107,18 @@ export default function App() {
     formData.append('proyecto', proyecto)
     formData.append('precioUnitario', parseFloat(precioUnitario) || 0)
     formData.append('cantidad', parseInt(cantidad, 10) || 0)
+    formData.append('estatus', estatus)
     formData.append('urlSaaS', urlSaaS)
     if (fechaCompra) formData.append('fechaCompra', fechaCompra)
     if (archivoSeleccionado) formData.append('archivo', archivoSeleccionado)
 
     try {
       const respuesta = await fetch(urlEndpoint, { method: metodo, body: formData })
-      if (!respuesta.ok) throw new Error(`Error al ${esEdicion ? 'actualizar' : 'guardar'} el registro`)
+      if (!respuesta.ok) throw new Error(`Error al ${esEdicion ? 'actualizar' : 'guardar'} la compra`)
 
       cancelarEdicion()
       setGuardando(false)
-      obtenerCompras()
+      cargarTodo()
       setPestanaActiva('consulta')
     } catch (err) {
       alert('Error: ' + err.message)
@@ -121,62 +131,50 @@ export default function App() {
 
   return (
     <div style={{ padding: '30px', fontFamily: 'Segoe UI, sans-serif', maxWidth: '1400px', margin: '0 auto' }}>
-      <h2>Módulo de Compras</h2>
-      <p style={{ color: '#666' }}>Sistema de gestión de compras integrando Azure SQL y Blob Storage</p>
+      <h2>Sistema de Control de Compras, Proyectos y Clientes</h2>
 
-      {/* Navegación por pestañas */}
       <div style={estilos.contenedorPestanas}>
-        <button 
-          onClick={() => setPestanaActiva('consulta')}
-          style={pestanaActiva === 'consulta' ? estilos.pestanaActiva : estilos.pestanaInactiva}
-        >
-          🔍 Vista de Consulta y Filtros
-        </button>
-        <button 
-          onClick={() => { setPestanaActiva('captura'); if (!idEditando) cancelarEdicion(); }}
-          style={pestanaActiva === 'captura' ? estilos.pestanaActiva : estilos.pestanaInactiva}
-        >
-          {idEditando ? `✏️ Editando #${idEditando}` : '➕ Registro / Captura'}
-        </button>
+        <button onClick={() => setPestanaActiva('consulta')} style={pestanaActiva === 'consulta' ? estilos.pestanaActiva : estilos.pestanaInactiva}>🔍 Consulta Compras</button>
+        <button onClick={() => { setPestanaActiva('captura'); if (!idEditando) cancelarEdicion(); }} style={pestanaActiva === 'captura' ? estilos.pestanaActiva : estilos.pestanaInactiva}>{idEditando ? `✏️ Editando #${idEditando}` : '➕ Captura Compra/Cotización'}</button>
+        <button onClick={() => setPestanaActiva('clientes')} style={pestanaActiva === 'clientes' ? estilos.pestanaActiva : estilos.pestanaInactiva}>🏢 Clientes & Contactos</button>
+        <button onClick={() => setPestanaActiva('ubicaciones')} style={pestanaActiva === 'ubicaciones' ? estilos.pestanaActiva : estilos.pestanaInactiva}>📍 Ubicaciones</button>
+        <button onClick={() => setPestanaActiva('proyectos')} style={pestanaActiva === 'proyectos' ? estilos.pestanaActiva : estilos.pestanaInactiva}>📁 Proyectos</button>
       </div>
 
-      {/* Renderizado Condicional de Componentes */}
-      {pestanaActiva === 'consulta' ? (
-        <VistaConsulta 
-          compras={compras}
-          iniciarEdicion={iniciarEdicion}
-          proveedoresUnicos={proveedoresUnicos}
-          categoriasUnicas={categoriasUnicas}
-          proyectosUnicos={proyectosUnicos}
-        />
-      ) : (
+      {pestanaActiva === 'consulta' && (
+        <VistaConsulta compras={compras} iniciarEdicion={iniciarEdicion} proveedoresUnicos={proveedoresUnicos} categoriasUnicas={categoriasUnicas} proyectosUnicos={proyectosUnicos} />
+      )}
+
+      {pestanaActiva === 'captura' && (
         <FormularioCompra 
-          idEditando={idEditando}
-          proveedor={proveedor} setProveedor={setProveedor}
-          costo={costo} setCosto={setCosto}
-          categoria={categoria} setCategoria={setCategoria}
-          producto={producto} setProducto={setProducto}
-          proyecto={proyecto} setProyecto={setProyecto}
-          precioUnitario={precioUnitario} setPrecioUnitario={setPrecioUnitario}
-          cantidad={cantidad} setCantidad={setCantidad}
-          urlSaaS={urlSaaS}
-          fechaCompra={fechaCompra} setFechaCompra={setFechaCompra}
-          setArchivoSeleccionado={setArchivoSeleccionado}
-          guardando={guardando}
-          manejarEnvio={manejarEnvio}
+          idEditando={idEditando} proveedor={proveedor} setProveedor={setProveedor}
+          costo={costo} setCosto={setCosto} categoria={categoria} setCategoria={setCategoria}
+          producto={producto} setProducto={setProducto} proyecto={proyecto} setProyecto={setProyecto}
+          precioUnitario={precioUnitario} setPrecioUnitario={setPrecioUnitario} cantidad={cantidad} setCantidad={setCantidad}
+          fechaCompra={fechaCompra} setFechaCompra={setFechaCompra} estatus={estatus} setEstatus={setEstatus}
+          setArchivoSeleccionado={setArchivoSeleccionado} guardando={guardando} manejarEnvio={manejarEnvio}
           cancelarEdicion={() => { cancelarEdicion(); setPestanaActiva('consulta'); }}
-          proveedoresUnicos={proveedoresUnicos}
-          categoriasUnicas={categoriasUnicas}
-          productosUnicos={productosUnicos}
-          proyectosUnicos={proyectosUnicos}
+          proveedoresUnicos={proveedoresUnicos} categoriasUnicas={categoriasUnicas} productosUnicos={productosUnicos} proyectosUnicos={proyectosUnicos}
         />
+      )}
+
+      {pestanaActiva === 'clientes' && (
+        <GestionClientes clientes={clientes} ubicaciones={ubicaciones} contactos={contactos} API_URL={API_URL} recargarDatos={cargarTodo} />
+      )}
+
+      {pestanaActiva === 'ubicaciones' && (
+        <GestionUbicaciones ubicaciones={ubicaciones} clientes={clientes} API_URL={API_URL} recargarDatos={cargarTodo} />
+      )}
+
+      {pestanaActiva === 'proyectos' && (
+        <GestionProyectos proyectos={proyectos} clientes={clientes} ubicaciones={ubicaciones} API_URL={API_URL} recargarDatos={cargarTodo} />
       )}
     </div>
   )
 }
 
 const estilos = {
-  contenedorPestanas: { display: 'flex', gap: '10px', marginBottom: '20px', borderBottom: '2px solid #e0e0e0', paddingBottom: '10px' },
-  pestanaActiva: { backgroundColor: '#007bff', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' },
-  pestanaInactiva: { backgroundColor: '#e9ecef', color: '#495057', border: 'none', padding: '10px 20px', borderRadius: '6px', fontWeight: '500', cursor: 'pointer' }
+  contenedorPestanas: { display: 'flex', gap: '8px', marginBottom: '20px', borderBottom: '2px solid #e0e0e0', paddingBottom: '10px', flexWrap: 'wrap' },
+  pestanaActiva: { backgroundColor: '#007bff', color: '#fff', border: 'none', padding: '10px 16px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' },
+  pestanaInactiva: { backgroundColor: '#e9ecef', color: '#495057', border: 'none', padding: '10px 16px', borderRadius: '6px', fontWeight: '500', cursor: 'pointer' }
 }

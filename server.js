@@ -14,76 +14,42 @@ dotenv.config()
 
 const app = express()
 
-// Middlewares
 app.use(express.json())
-app.use(cors({
-  origin: '*',
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}))
+app.use(cors({ origin: '*', methods: ['GET', 'POST', 'PUT', 'DELETE'], allowedHeaders: ['Content-Type', 'Authorization'] }))
 
-// Configuración de Multer para recibir archivos en memoria (límite 25MB)
 const storage = multer.memoryStorage()
 const upload = multer({ storage, limits: { fileSize: 25 * 1024 * 1024 } })
 
-// Configuración de conexión a Azure SQL Database
 const config = {
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   server: process.env.DB_SERVER,
   database: process.env.DB_DATABASE,
-  options: {
-    encrypt: true, // Obligatorio para Azure SQL
-    trustServerCertificate: false
-  }
+  options: { encrypt: true, trustServerCertificate: false }
 }
 
-/**
- * Subir archivo a Azure Blob Storage y generar enlace SAS público con permiso de lectura
- */
 async function subirABlobYObtenerSAS(file) {
   if (!file) return null
-
   const connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING
   const containerName = process.env.AZURE_CONTAINER_NAME
-
-  if (!connectionString || !containerName) {
-    throw new Error("Faltan las variables AZURE_STORAGE_CONNECTION_STRING o AZURE_CONTAINER_NAME en la configuración del servidor.")
-  }
+  if (!connectionString || !containerName) throw new Error("Faltan variables de Azure Blob Storage.")
 
   try {
     const blobServiceClient = BlobServiceClient.fromConnectionString(connectionString)
     const containerClient = blobServiceClient.getContainerClient(containerName)
-
-    // Sanitizar nombre de archivo (reemplaza espacios y caracteres raros)
-    const nombreLimpio = file.originalname
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^a-zA-Z0-9.\-_]/g, '_')
-
+    const nombreLimpio = file.originalname.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9.\-_]/g, '_')
     const blobName = `compra_${Date.now()}_${nombreLimpio}`
     const blockBlobClient = containerClient.getBlockBlobClient(blobName)
 
-    // Subir el buffer recibido
-    await blockBlobClient.uploadData(file.buffer, {
-      blobHTTPHeaders: { blobContentType: file.mimetype || 'application/octet-stream' }
-    })
+    await blockBlobClient.uploadData(file.buffer, { blobHTTPHeaders: { blobContentType: file.mimetype || 'application/octet-stream' } })
 
-    // Extraer AccountName y AccountKey de forma segura para firmar la URL SAS
     const accountName = blobServiceClient.accountName
     const matchKey = connectionString.match(/AccountKey=([^;]+)/)
     const accountKey = matchKey ? matchKey[1].replace(/["']/g, '').trim() : ''
-
-    if (!accountKey) {
-      throw new Error("No se pudo extraer la AccountKey de la cadena de conexión.")
-    }
-
     const sharedKeyCredential = new StorageSharedKeyCredential(accountName, accountKey)
 
-    // Generar Token SAS (Lectura, válido por 100 años)
     const sasToken = generateBlobSASQueryParameters({
-      containerName: containerName,
-      blobName: blobName,
+      containerName, blobName,
       permissions: BlobSASPermissions.parse("r"),
       startsOn: new Date(),
       expiresOn: new Date(new Date().valueOf() + 100 * 365 * 24 * 60 * 60 * 1000)
@@ -91,13 +57,148 @@ async function subirABlobYObtenerSAS(file) {
 
     return `${blockBlobClient.url}?${sasToken}`
   } catch (err) {
-    console.error("❌ Error en subirABlobYObtenerSAS:", err.message)
-    throw new Error(`Error en Blob Storage: ${err.message}`)
+    throw new Error(`Error Blob Storage: ${err.message}`)
   }
 }
 
 // -------------------------------------------------------------
-// RUTA 1: Obtener todos los registros de Compras (GET)
+// 1. CLIENTES (Sin la columna Contacto)
+// -------------------------------------------------------------
+app.get('/api/clientes', async (req, res) => {
+  try {
+    let pool = await sql.connect(config)
+    let resultado = await pool.request().query('SELECT ClienteID, NombreCliente, RFC_TaxID, FechaCreacion FROM Clientes ORDER BY NombreCliente ASC')
+    res.json(resultado.recordset)
+  } catch (error) {
+    res.status(500).send(error.message)
+  }
+})
+
+app.post('/api/clientes', async (req, res) => {
+  const { nombreCliente, rfc } = req.body
+  try {
+    let pool = await sql.connect(config)
+    await pool.request()
+      .input('NombreCliente', sql.NVarChar, nombreCliente || '')
+      .input('RFC', sql.NVarChar, rfc || null)
+      .query('INSERT INTO Clientes (NombreCliente, RFC_TaxID) VALUES (@NombreCliente, @RFC)')
+    res.json({ mensaje: 'Cliente registrado correctamente' })
+  } catch (error) {
+    res.status(500).send(error.message)
+  }
+})
+
+// -------------------------------------------------------------
+// 2. CONTACTOS CLIENTES (Nueva tabla)
+// -------------------------------------------------------------
+app.get('/api/contactos', async (req, res) => {
+  try {
+    let pool = await sql.connect(config)
+    let query = `
+      SELECT ct.ContactoID, ct.NombreContacto, ct.Puesto, ct.Telefono, ct.Email, 
+             ct.ClienteID, c.NombreCliente, ct.UbicacionID, u.NombreUbicacion
+      FROM ContactosClientes ct
+      INNER JOIN Clientes c ON ct.ClienteID = c.ClienteID
+      INNER JOIN Ubicaciones u ON ct.UbicacionID = u.UbicacionID
+      ORDER BY c.NombreCliente, ct.NombreContacto ASC
+    `
+    let resultado = await pool.request().query(query)
+    res.json(resultado.recordset)
+  } catch (error) {
+    res.status(500).send(error.message)
+  }
+})
+
+app.post('/api/contactos', async (req, res) => {
+  const { clienteID, ubicacionID, nombreContacto, puesto, telefono, email } = req.body
+  try {
+    let pool = await sql.connect(config)
+    await pool.request()
+      .input('ClienteID', sql.Int, parseInt(clienteID, 10))
+      .input('UbicacionID', sql.Int, parseInt(ubicacionID, 10))
+      .input('NombreContacto', sql.NVarChar, nombreContacto || '')
+      .input('Puesto', sql.NVarChar, puesto || null)
+      .input('Telefono', sql.NVarChar, telefono || null)
+      .input('Email', sql.NVarChar, email || null)
+      .query('INSERT INTO ContactosClientes (ClienteID, UbicacionID, NombreContacto, Puesto, Telefono, Email) VALUES (@ClienteID, @UbicacionID, @NombreContacto, @Puesto, @Telefono, @Email)')
+    res.json({ mensaje: 'Contacto registrado correctamente' })
+  } catch (error) {
+    res.status(500).send(error.message)
+  }
+})
+
+// -------------------------------------------------------------
+// 3. UBICACIONES
+// -------------------------------------------------------------
+app.get('/api/ubicaciones', async (req, res) => {
+  try {
+    let pool = await sql.connect(config)
+    let query = `
+      SELECT u.UbicacionID, u.NombreUbicacion, u.Direccion, u.Ciudad, u.ClienteID, c.NombreCliente
+      FROM Ubicaciones u
+      INNER JOIN Clientes c ON u.ClienteID = c.ClienteID
+      ORDER BY c.NombreCliente, u.NombreUbicacion ASC
+    `
+    let resultado = await pool.request().query(query)
+    res.json(resultado.recordset)
+  } catch (error) {
+    res.status(500).send(error.message)
+  }
+})
+
+app.post('/api/ubicaciones', async (req, res) => {
+  const { clienteID, nombreUbicacion, direccion, ciudad } = req.body
+  try {
+    let pool = await sql.connect(config)
+    await pool.request()
+      .input('ClienteID', sql.Int, parseInt(clienteID, 10))
+      .input('NombreUbicacion', sql.NVarChar, nombreUbicacion || '')
+      .input('Direccion', sql.NVarChar, direccion || null)
+      .input('Ciudad', sql.NVarChar, ciudad || null)
+      .query('INSERT INTO Ubicaciones (ClienteID, NombreUbicacion, Direccion, Ciudad) VALUES (@ClienteID, @NombreUbicacion, @Direccion, @Ciudad)')
+    res.json({ mensaje: 'Ubicación registrada correctamente' })
+  } catch (error) {
+    res.status(500).send(error.message)
+  }
+})
+
+// -------------------------------------------------------------
+// 4. PROYECTOS
+// -------------------------------------------------------------
+app.get('/api/proyectos', async (req, res) => {
+  try {
+    let pool = await sql.connect(config)
+    let query = `
+      SELECT p.ProyectoID, p.NombreProyecto, p.Estatus, p.UbicacionID, u.NombreUbicacion, c.ClienteID, c.NombreCliente
+      FROM Proyectos p
+      INNER JOIN Ubicaciones u ON p.UbicacionID = u.UbicacionID
+      INNER JOIN Clientes c ON u.ClienteID = c.ClienteID
+      ORDER BY p.NombreProyecto ASC
+    `
+    let resultado = await pool.request().query(query)
+    res.json(resultado.recordset)
+  } catch (error) {
+    res.status(500).send(error.message)
+  }
+})
+
+app.post('/api/proyectos', async (req, res) => {
+  const { nombreProyecto, ubicacionID, descripcion } = req.body
+  try {
+    let pool = await sql.connect(config)
+    await pool.request()
+      .input('NombreProyecto', sql.NVarChar, nombreProyecto || '')
+      .input('UbicacionID', sql.Int, parseInt(ubicacionID, 10))
+      .input('Descripcion', sql.NVarChar, descripcion || null)
+      .query('INSERT INTO Proyectos (NombreProyecto, UbicacionID, Descripcion) VALUES (@NombreProyecto, @UbicacionID, @Descripcion)')
+    res.json({ mensaje: 'Proyecto registrado correctamente' })
+  } catch (error) {
+    res.status(500).send(error.message)
+  }
+})
+
+// -------------------------------------------------------------
+// 5. COMPRAS (Soporte para columna Estatus: Cotizado / Comprado)
 // -------------------------------------------------------------
 app.get('/api/datos', async (req, res) => {
   try {
@@ -105,29 +206,18 @@ app.get('/api/datos', async (req, res) => {
     let resultado = await pool.request().query('SELECT * FROM Compras ORDER BY FechaCreacion DESC')
     res.json(resultado.recordset)
   } catch (error) {
-    console.error('❌ Error al consultar Azure SQL:', error.message)
     res.status(500).send(error.message)
   }
 })
 
-// -------------------------------------------------------------
-// RUTA 2: Insertar un nuevo registro de Compra (POST)
-// -------------------------------------------------------------
 app.post('/api/compras', upload.single('archivo'), async (req, res) => {
-  const { proveedor, costo, categoria, producto, proyecto, precioUnitario, cantidad, fechaCompra, fecha, urlSaaS } = req.body
+  const { proveedor, costo, categoria, producto, proyecto, precioUnitario, cantidad, fechaCompra, fecha, urlSaaS, estatus } = req.body
   const valorFechaFinal = fechaCompra || fecha
   const file = req.file
 
-  console.log('--- NUEVO REGISTRO (POST) ---')
-  console.log('Datos recibidos:', { proveedor, costo, categoria, producto, proyecto, precioUnitario, cantidad, fechaCompra: valorFechaFinal })
-  console.log('Archivo adjunto:', file ? file.originalname : 'Sin archivo')
-
   try {
     let finalUrlSaaS = (urlSaaS && urlSaaS !== 'null' && urlSaaS !== 'undefined') ? urlSaaS : null
-
-    if (file) {
-      finalUrlSaaS = await subirABlobYObtenerSAS(file)
-    }
+    if (file) finalUrlSaaS = await subirABlobYObtenerSAS(file)
 
     let pool = await sql.connect(config)
     let request = pool.request()
@@ -139,47 +229,34 @@ app.post('/api/compras', upload.single('archivo'), async (req, res) => {
       .input('PrecioUnitario', sql.Decimal(10, 2), parseFloat(precioUnitario) || 0)
       .input('Cantidad', sql.Int, parseInt(cantidad, 10) || 0)
       .input('URL_SaaS', sql.NVarChar, finalUrlSaaS)
+      .input('Estatus', sql.NVarChar, estatus || 'Comprado')
 
-    const fechaValida = (valorFechaFinal && String(valorFechaFinal).trim() !== '' && String(valorFechaFinal) !== 'null') 
-      ? valorFechaFinal 
-      : null
+    const fechaValida = (valorFechaFinal && String(valorFechaFinal).trim() !== '' && String(valorFechaFinal) !== 'null') ? valorFechaFinal : null
     request.input('FechaCompra', sql.Date, fechaValida)
 
     await request.query(`
-      INSERT INTO Compras (Proveedor, Costo, Categoria, Producto, Proyecto, PrecioUnitario, Cantidad, URL_SaaS, FechaCompra, FechaCreacion) 
-      VALUES (@Proveedor, @Costo, @Categoria, @Producto, @Proyecto, @PrecioUnitario, @Cantidad, @URL_SaaS, @FechaCompra, CAST(GETDATE() AS DATE))
+      INSERT INTO Compras (Proveedor, Costo, Categoria, Producto, Proyecto, PrecioUnitario, Cantidad, URL_SaaS, FechaCompra, Estatus, FechaCreacion) 
+      VALUES (@Proveedor, @Costo, @Categoria, @Producto, @Proyecto, @PrecioUnitario, @Cantidad, @URL_SaaS, @FechaCompra, @Estatus, CAST(GETDATE() AS DATE))
     `)
 
     res.json({ mensaje: 'Registro guardado exitosamente', urlSaaS: finalUrlSaaS })
   } catch (error) {
-    console.error('❌ Error al insertar registro:', error.message)
     res.status(500).send(error.message)
   }
 })
 
-// -------------------------------------------------------------
-// RUTA 3: Actualizar una compra existente (PUT)
-// -------------------------------------------------------------
 app.put('/api/compras/:id', upload.single('archivo'), async (req, res) => {
   const { id } = req.params
-  const { proveedor, costo, categoria, producto, proyecto, precioUnitario, cantidad, fechaCompra, fecha, urlSaaS } = req.body
+  const { proveedor, costo, categoria, producto, proyecto, precioUnitario, cantidad, fechaCompra, fecha, urlSaaS, estatus } = req.body
   const valorFechaFinal = fechaCompra || fecha
   const file = req.file
 
   const idNumero = parseInt(id, 10)
-  if (isNaN(idNumero)) {
-    return res.status(400).send('El ID proporcionado no es un número entero válido.')
-  }
-
-  console.log('--- ACTUALIZACIÓN DE REGISTRO (PUT) ---')
-  console.log('ID a modificar:', idNumero)
+  if (isNaN(idNumero)) return res.status(400).send('ID inválido.')
 
   try {
     let finalUrlSaaS = (urlSaaS && urlSaaS !== 'null' && urlSaaS !== 'undefined') ? urlSaaS : null
-
-    if (file) {
-      finalUrlSaaS = await subirABlobYObtenerSAS(file)
-    }
+    if (file) finalUrlSaaS = await subirABlobYObtenerSAS(file)
 
     let pool = await sql.connect(config)
     let request = pool.request()
@@ -192,13 +269,12 @@ app.put('/api/compras/:id', upload.single('archivo'), async (req, res) => {
       .input('PrecioUnitario', sql.Decimal(10, 2), parseFloat(precioUnitario) || 0)
       .input('Cantidad', sql.Int, parseInt(cantidad, 10) || 0)
       .input('URL_SaaS', sql.NVarChar, finalUrlSaaS)
+      .input('Estatus', sql.NVarChar, estatus || 'Comprado')
 
-    const fechaValida = (valorFechaFinal && String(valorFechaFinal).trim() !== '' && String(valorFechaFinal) !== 'null') 
-      ? valorFechaFinal 
-      : null
+    const fechaValida = (valorFechaFinal && String(valorFechaFinal).trim() !== '' && String(valorFechaFinal) !== 'null') ? valorFechaFinal : null
     request.input('FechaCompra', sql.Date, fechaValida)
 
-    const queryFinal = `
+    await request.query(`
       UPDATE Compras 
       SET Proveedor = @Proveedor, 
           Costo = @Costo, 
@@ -208,22 +284,16 @@ app.put('/api/compras/:id', upload.single('archivo'), async (req, res) => {
           PrecioUnitario = @PrecioUnitario,
           Cantidad = @Cantidad,
           URL_SaaS = @URL_SaaS,
-          FechaCompra = @FechaCompra
+          FechaCompra = @FechaCompra,
+          Estatus = @Estatus
       WHERE Numero = @ID
-    `
-
-    const resultado = await request.query(queryFinal)
-    console.log('Filas afectadas:', resultado.rowsAffected[0])
+    `)
 
     res.json({ mensaje: 'Registro actualizado exitosamente', urlSaaS: finalUrlSaaS })
   } catch (error) {
-    console.error('❌ Error al actualizar registro:', error.message)
     res.status(500).send(error.message)
   }
 })
 
-// Puerto de ejecución
 const PORT = process.env.PORT || 3000
-app.listen(PORT, () => {
-  console.log(`🚀 Servidor Backend corriendo en puerto ${PORT}`)
-})
+app.listen(PORT, () => { console.log(`🚀 Servidor corriendo en puerto ${PORT}`) })

@@ -9,8 +9,8 @@ export default function FormularioCompra({
   proyecto, setProyecto,
   precioUnitario, setPrecioUnitario,
   cantidad, setCantidad,
-  urlSaaS,
   fechaCompra, setFechaCompra,
+  estatus, setEstatus,
   setArchivoSeleccionado,
   guardando,
   manejarEnvio,
@@ -25,134 +25,91 @@ export default function FormularioCompra({
   return (
     <form onSubmit={manejarEnvio} style={estilos.formulario}>
       <h3 style={{ marginTop: 0, marginBottom: '15px' }}>
-        {idEditando ? `✏️ Modificar Registro #${idEditando}` : '➕ Registrar Nueva Compra'}
+        {idEditando ? `✏️ Modificar Registro #${idEditando}` : '➕ Registrar Nueva Compra / Cotización'}
       </h3>
       <div style={estilos.grupoInputs}>
         
+        {/* Estatus */}
+        <div style={{ flex: '1', minWidth: '140px' }}>
+          <label style={estilos.label}>Estatus:</label>
+          <select value={estatus} onChange={e => setEstatus(e.target.value)} style={estilos.input}>
+            <option value="Comprado">🟢 Comprado</option>
+            <option value="Cotizado">🟡 Cotizado</option>
+          </select>
+        </div>
+
         {/* Proveedor */}
-        <input 
-          type="text" 
-          list="lista-proveedores"
-          placeholder="Proveedor" 
-          value={proveedor} 
-          onChange={(e) => setProveedor(e.target.value)}
-          required
-          style={estilos.input}
-        />
-        <datalist id="lista-proveedores">
-          {proveedoresUnicos.map((p, idx) => <option key={idx} value={p} />)}
-        </datalist>
+        <div style={{ flex: '1', minWidth: '140px' }}>
+          <label style={estilos.label}>Proveedor:</label>
+          <input type="text" list="lista-proveedores" value={proveedor} onChange={e => setProveedor(e.target.value)} required style={estilos.input} />
+          <datalist id="lista-proveedores">{proveedoresUnicos.map((p, idx) => <option key={idx} value={p} />)}</datalist>
+        </div>
 
         {/* Proyecto */}
-        <input 
-          type="text" 
-          list="lista-proyectos"
-          placeholder="Proyecto" 
-          value={proyecto} 
-          onChange={(e) => setProyecto(e.target.value)}
-          style={estilos.input}
-        />
-        <datalist id="lista-proyectos">
-          {proyectosUnicos.map((p, idx) => <option key={idx} value={p} />)}
-        </datalist>
+        <div style={{ flex: '1', minWidth: '140px' }}>
+          <label style={estilos.label}>Proyecto:</label>
+          <input type="text" list="lista-proyectos" value={proyecto} onChange={e => setProyecto(e.target.value)} style={estilos.input} />
+          <datalist id="lista-proyectos">{proyectosUnicos.map((p, idx) => <option key={idx} value={p} />)}</datalist>
+        </div>
 
         {/* Categoría */}
-        <input 
-          type="text" 
-          list="lista-categorias"
-          placeholder="Categoría" 
-          value={categoria} 
-          onChange={(e) => setCategoria(e.target.value)}
-          required
-          style={estilos.input}
-        />
-        <datalist id="lista-categorias">
-          {categoriasUnicas.map((c, idx) => <option key={idx} value={c} />)}
-        </datalist>
+        <div style={{ flex: '1', minWidth: '140px' }}>
+          <label style={estilos.label}>Categoría:</label>
+          <input type="text" list="lista-categorias" value={categoria} onChange={e => setCategoria(e.target.value)} required style={estilos.input} />
+          <datalist id="lista-categorias">{categoriasUnicas.map((c, idx) => <option key={idx} value={c} />)}</datalist>
+        </div>
 
         {/* Producto */}
-        <input 
-          type="text" 
-          list="lista-productos"
-          placeholder="Producto" 
-          value={producto} 
-          onChange={(e) => setProducto(e.target.value)}
-          required
-          style={estilos.input}
-        />
-        <datalist id="lista-productos">
-          {productosUnicos.map((p, idx) => <option key={idx} value={p} />)}
-        </datalist>
+        <div style={{ flex: '1', minWidth: '140px' }}>
+          <label style={estilos.label}>Producto:</label>
+          <input type="text" list="lista-productos" value={producto} onChange={e => setProducto(e.target.value)} required style={estilos.input} />
+          <datalist id="lista-productos">{productosUnicos.map((p, idx) => <option key={idx} value={p} />)}</datalist>
+        </div>
 
         {/* Cantidad */}
-        <input 
-          type="number" 
-          placeholder="Cantidad" 
-          value={cantidad} 
-          onChange={(e) => {
+        <div style={{ flex: '1', minWidth: '100px' }}>
+          <label style={estilos.label}>Cantidad:</label>
+          <input type="number" value={cantidad} onChange={e => {
             const cant = e.target.value
             setCantidad(cant)
             if (precioUnitario && cant) setCosto((parseFloat(precioUnitario) * parseFloat(cant)).toFixed(2))
-          }}
-          style={estilos.input}
-        />
+          }} style={estilos.input} />
+        </div>
 
         {/* Precio Unitario */}
-        <input 
-          type="number" 
-          step="0.01" 
-          placeholder="Precio Unitario ($)" 
-          value={precioUnitario} 
-          onChange={(e) => {
+        <div style={{ flex: '1', minWidth: '120px' }}>
+          <label style={estilos.label}>P. Unitario ($):</label>
+          <input type="number" step="0.01" value={precioUnitario} onChange={e => {
             const pu = e.target.value
             setPrecioUnitario(pu)
             if (cantidad && pu) setCosto((parseFloat(pu) * parseFloat(cantidad)).toFixed(2))
-          }}
-          style={estilos.input}
-        />
+          }} style={estilos.input} />
+        </div>
 
         {/* Costo Total */}
-        <input 
-          type="number" 
-          step="0.01" 
-          placeholder="Costo Total ($)" 
-          value={costo} 
-          onChange={(e) => setCosto(e.target.value)}
-          required
-          style={estilos.input}
-        />
-        
+        <div style={{ flex: '1', minWidth: '120px' }}>
+          <label style={estilos.label}>Costo Total ($):</label>
+          <input type="number" step="0.01" value={costo} onChange={e => setCosto(e.target.value)} required style={estilos.input} />
+        </div>
+
         {/* Archivo */}
-        <div style={{ flex: '1', minWidth: '220px' }}>
-          <label style={{ display: 'block', fontSize: '12px', marginBottom: '4px', color: '#ccc' }}>
-            {idEditando ? 'Reemplazar archivo (Opcional):' : 'Adjuntar Archivo / Factura:'}
-          </label>
-          <input 
-            ref={fileInputRef}
-            type="file" 
-            accept="image/*,application/pdf"
-            onChange={(e) => setArchivoSeleccionado(e.target.files[0])}
-            style={{ ...estilos.input, width: '100%' }}
-          />
+        <div style={{ flex: '1', minWidth: '200px' }}>
+          <label style={estilos.label}>{idEditando ? 'Reemplazar archivo:' : 'Adjuntar Archivo:'}</label>
+          <input ref={fileInputRef} type="file" accept="image/*,application/pdf" onChange={e => setArchivoSeleccionado(e.target.files[0])} style={estilos.input} />
         </div>
 
         {/* Fecha Compra */}
-        <input 
-          type="date" 
-          value={fechaCompra} 
-          onChange={(e) => setFechaCompra(e.target.value)}
-          title="Fecha de la Compra"
-          style={estilos.input}
-        />
+        <div style={{ flex: '1', minWidth: '140px' }}>
+          <label style={estilos.label}>Fecha:</label>
+          <input type="date" value={fechaCompra} onChange={e => setFechaCompra(e.target.value)} style={estilos.input} />
+        </div>
 
         <button type="submit" disabled={guardando} style={idEditando ? estilos.botonEditar : estilos.botonGuardar}>
-          {guardando ? 'Guardando...' : idEditando ? '💾 Actualizar' : '💾 Guardar Registro'}
+          {guardando ? 'Guardando...' : idEditando ? '💾 Actualizar' : '💾 Guardar'}
         </button>
 
         {idEditando && (
-          <button type="button" onClick={cancelarEdicion} style={estilos.botonCancelar}>
-            ❌ Cancelar
-          </button>
+          <button type="button" onClick={cancelarEdicion} style={estilos.botonCancelar}>❌ Cancelar</button>
         )}
       </div>
     </form>
@@ -160,58 +117,11 @@ export default function FormularioCompra({
 }
 
 const estilos = {
-  formulario: { 
-    backgroundColor: '#f8f9fa', 
-    color: '#333', 
-    padding: '20px', 
-    borderRadius: '8px', 
-    marginBottom: '30px', 
-    border: '1px solid #e3e6f0' 
-  },
-  grupoInputs: { 
-    display: 'flex', 
-    gap: '10px', 
-    flexWrap: 'wrap', 
-    alignItems: 'flex-end' 
-  },
-  input: { 
-    flex: '1', 
-    minWidth: '140px', 
-    padding: '10px', 
-    borderRadius: '4px', 
-    border: '1px solid #ccc', 
-    backgroundColor: '#fff', 
-    color: '#333', 
-    fontSize: '14px', 
-    boxSizing: 'border-box' 
-  },
-  botonGuardar: { 
-    backgroundColor: '#28a745', 
-    color: 'white', 
-    border: 'none', 
-    padding: '10px 20px', 
-    borderRadius: '4px', 
-    cursor: 'pointer', 
-    fontWeight: 'bold', 
-    height: '40px' 
-  },
-  botonEditar: { 
-    backgroundColor: '#007bff', 
-    color: 'white', 
-    border: 'none', 
-    padding: '10px 20px', 
-    borderRadius: '4px', 
-    cursor: 'pointer', 
-    fontWeight: 'bold', 
-    height: '40px' 
-  },
-  botonCancelar: { 
-    backgroundColor: '#6c757d', 
-    color: 'white', 
-    border: 'none', 
-    padding: '10px 15px', 
-    borderRadius: '4px', 
-    cursor: 'pointer', 
-    height: '40px' 
-  }
+  formulario: { backgroundColor: '#f8f9fa', padding: '20px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #e3e6f0' },
+  grupoInputs: { display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-end' },
+  label: { fontSize: '11px', fontWeight: 'bold', color: '#555', display: 'block', marginBottom: '3px' },
+  input: { width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc', backgroundColor: '#fff', fontSize: '13px', boxSizing: 'border-box' },
+  botonGuardar: { backgroundColor: '#28a745', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', height: '36px' },
+  botonEditar: { backgroundColor: '#007bff', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', height: '36px' },
+  botonCancelar: { backgroundColor: '#6c757d', color: 'white', border: 'none', padding: '10px 15px', borderRadius: '4px', cursor: 'pointer', height: '36px' }
 }
