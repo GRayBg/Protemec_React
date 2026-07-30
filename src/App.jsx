@@ -15,6 +15,9 @@ export default function App() {
   const [costo, setCosto] = useState('')
   const [categoria, setCategoria] = useState('')
   const [producto, setProducto] = useState('')
+  const [proyecto, setProyecto] = useState('')               // 🆕 NUEVO
+  const [precioUnitario, setPrecioUnitario] = useState('')   // 🆕 NUEVO
+  const [cantidad, setCantidad] = useState('')               // 🆕 NUEVO
   const [urlSaaS, setUrlSaaS] = useState('')
   const [archivoSeleccionado, setArchivoSeleccionado] = useState(null)
   const [fechaCompra, setFechaCompra] = useState('')
@@ -32,6 +35,7 @@ export default function App() {
   const proveedoresUnicos = [...new Set(compras.map(c => c.Proveedor || c.proveedor).filter(Boolean))]
   const categoriasUnicas = [...new Set(compras.map(c => c.Categoria || c.categoria).filter(Boolean))]
   const productosUnicos = [...new Set(compras.map(c => c.Producto || c.producto).filter(Boolean))]
+  const proyectosUnicos = [...new Set(compras.map(c => c.Proyecto || c.proyecto).filter(Boolean))] // 🆕 NUEVO
 
   const obtenerCompras = () => {
     fetch(`${API_URL}/api/datos?t=${Date.now()}`)
@@ -60,6 +64,9 @@ export default function App() {
     setCosto(fila.Costo || fila.costo || '')
     setCategoria(fila.Categoria || fila.categoria || '')
     setProducto(fila.Producto || fila.producto || '')
+    setProyecto(fila.Proyecto || fila.proyecto || '')                   // 🆕 NUEVO
+    setPrecioUnitario(fila.PrecioUnitario || fila.precioUnitario || '') // 🆕 NUEVO
+    setCantidad(fila.Cantidad || fila.cantidad || '')                   // 🆕 NUEVO
     setUrlSaaS(fila.URL_SaaS || fila.urlSaaS || fila.url_saas || '')
     setArchivoSeleccionado(null)
 
@@ -82,6 +89,9 @@ export default function App() {
     setCosto('')
     setCategoria('')
     setProducto('')
+    setProyecto('')        // 🆕 NUEVO
+    setPrecioUnitario('')  // 🆕 NUEVO
+    setCantidad('')        // 🆕 NUEVO
     setUrlSaaS('')
     setArchivoSeleccionado(null)
     setFechaCompra('')
@@ -106,6 +116,9 @@ export default function App() {
     formData.append('costo', parseFloat(costo) || 0)
     formData.append('categoria', categoria)
     formData.append('producto', producto)
+    formData.append('proyecto', proyecto)                                 // 🆕 NUEVO
+    formData.append('precioUnitario', parseFloat(precioUnitario) || 0)   // 🆕 NUEVO
+    formData.append('cantidad', parseInt(cantidad, 10) || 0)             // 🆕 NUEVO
     formData.append('urlSaaS', urlSaaS)
     if (fechaCompra) formData.append('fechaCompra', fechaCompra)
 
@@ -154,7 +167,8 @@ export default function App() {
       }
     }
 
-    if (colLower === 'costo') {
+    // Formato de moneda para Costo y PrecioUnitario
+    if (colLower === 'costo' || colLower === 'preciounitario') {
       const numero = Number(valor)
       return isNaN(numero) ? valor : `$${numero.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
     }
@@ -176,7 +190,7 @@ export default function App() {
   if (error) return <div style={{ padding: '40px', color: 'red', fontFamily: 'sans-serif' }}>❌ Error: {error}</div>
 
   return (
-    <div style={{ padding: '30px', fontFamily: 'Segoe UI, sans-serif', maxWidth: '1200px', margin: '0 auto' }}>
+    <div style={{ padding: '30px', fontFamily: 'Segoe UI, sans-serif', maxWidth: '1400px', margin: '0 auto' }}>
       <h2>Módulo de Compras</h2>
       <p style={{ color: '#666' }}>Consulta y registro en tiempo real con Azure SQL y Blob Storage</p>
 
@@ -187,7 +201,7 @@ export default function App() {
         </h3>
         <div style={estilos.grupoInputs}>
           
-          {/* Campo Proveedor con Datalist */}
+          {/* Campo Proveedor */}
           <input 
             type="text" 
             list="lista-proveedores"
@@ -203,17 +217,22 @@ export default function App() {
             ))}
           </datalist>
 
+          {/* Campo Proyecto - 🆕 NUEVO */}
           <input 
-            type="number" 
-            step="0.01" 
-            placeholder="Costo ($)" 
-            value={costo} 
-            onChange={(e) => setCosto(e.target.value)}
-            required
+            type="text" 
+            list="lista-proyectos"
+            placeholder="Proyecto" 
+            value={proyecto} 
+            onChange={(e) => setProyecto(e.target.value)}
             style={estilos.input}
           />
+          <datalist id="lista-proyectos">
+            {proyectosUnicos.map((proj, idx) => (
+              <option key={idx} value={proj} />
+            ))}
+          </datalist>
 
-          {/* Campo Categoría con Datalist */}
+          {/* Campo Categoría */}
           <input 
             type="text" 
             list="lista-categorias"
@@ -229,7 +248,7 @@ export default function App() {
             ))}
           </datalist>
 
-          {/* Campo Producto con Datalist */}
+          {/* Campo Producto */}
           <input 
             type="text" 
             list="lista-productos"
@@ -244,6 +263,48 @@ export default function App() {
               <option key={idx} value={prod} />
             ))}
           </datalist>
+
+          {/* Campo Cantidad - 🆕 NUEVO */}
+          <input 
+            type="number" 
+            placeholder="Cantidad" 
+            value={cantidad} 
+            onChange={(e) => {
+              const cant = e.target.value
+              setCantidad(cant)
+              if (precioUnitario && cant) {
+                setCosto((parseFloat(precioUnitario) * parseFloat(cant)).toFixed(2))
+              }
+            }}
+            style={estilos.input}
+          />
+
+          {/* Campo Precio Unitario - 🆕 NUEVO */}
+          <input 
+            type="number" 
+            step="0.01" 
+            placeholder="Precio Unitario ($)" 
+            value={precioUnitario} 
+            onChange={(e) => {
+              const pu = e.target.value
+              setPrecioUnitario(pu)
+              if (cantidad && pu) {
+                setCosto((parseFloat(pu) * parseFloat(cantidad)).toFixed(2))
+              }
+            }}
+            style={estilos.input}
+          />
+
+          {/* Campo Costo Total */}
+          <input 
+            type="number" 
+            step="0.01" 
+            placeholder="Costo Total ($)" 
+            value={costo} 
+            onChange={(e) => setCosto(e.target.value)}
+            required
+            style={estilos.input}
+          />
           
           <div style={{ flex: '1', minWidth: '220px' }}>
             <label style={{ display: 'block', fontSize: '12px', marginBottom: '4px', color: '#ccc' }}>
@@ -331,7 +392,7 @@ export default function App() {
 const estilos = {
   formulario: { backgroundColor: '#1e1e1e', color: '#fff', padding: '20px', borderRadius: '8px', marginBottom: '30px' },
   grupoInputs: { display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-end' },
-  input: { flex: '1', minWidth: '150px', padding: '10px', borderRadius: '4px', border: '1px solid #444', backgroundColor: '#2d2d2d', color: '#fff', fontSize: '14px', boxSizing: 'border-box' },
+  input: { flex: '1', minWidth: '140px', padding: '10px', borderRadius: '4px', border: '1px solid #444', backgroundColor: '#2d2d2d', color: '#fff', fontSize: '14px', boxSizing: 'border-box' },
   botonGuardar: { backgroundColor: '#28a745', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', height: '40px' },
   botonEditar: { backgroundColor: '#007bff', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', height: '40px' },
   botonCancelar: { backgroundColor: '#6c757d', color: 'white', border: 'none', padding: '10px 15px', borderRadius: '4px', cursor: 'pointer', height: '40px' },
