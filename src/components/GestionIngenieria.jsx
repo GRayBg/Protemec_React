@@ -34,9 +34,14 @@ export default function GestionIngenieria({ disenos, proyectosUnicos, API_URL, r
     return coincideProyecto && coincideTexto
   })
 
-  // Listas condicionales para selector de padres
-  const ensamblesDisponibles = disenos.filter(d => d.TipoNivel === 'Ensamble' && (!proyectoForm || d.Proyecto === proyectoForm))
-  const subEnsamblesDisponibles = disenos.filter(d => d.TipoNivel === 'Subensamble' && (!proyectoForm || d.Proyecto === proyectoForm))
+  // Padres disponibles flexibles (Permite sub-ensambles dentro de sub-ensambles y piezas en cualquier nivel superior)
+  const padresDisponiblesParaSubensamble = disenos.filter(
+    d => (d.TipoNivel === 'Ensamble' || d.TipoNivel === 'Subensamble') && (!proyectoForm || d.Proyecto === proyectoForm)
+  )
+
+  const padresDisponiblesParaPieza = disenos.filter(
+    d => (d.TipoNivel === 'Ensamble' || d.TipoNivel === 'Subensamble') && (!proyectoForm || d.Proyecto === proyectoForm)
+  )
 
   const manejarEnvio = async (e) => {
     e.preventDefault()
@@ -531,11 +536,11 @@ export default function GestionIngenieria({ disenos, proyectosUnicos, API_URL, r
 
             {tipoNivel === 'Subensamble' && (
               <div>
-                <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px', fontSize: '13px' }}>Ensamble Padre:*</label>
+                <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px', fontSize: '13px' }}>Elemento Padre (Ensamble o Sub-ensamble):*</label>
                 <select value={padreID} onChange={(e) => setPadreID(e.target.value)} required style={{ width: '100%', padding: '9px', borderRadius: '4px', border: '1px solid #ccc' }}>
-                  <option value="">-- Pertenece al Ensamble --</option>
-                  {ensamblesDisponibles.map(e => (
-                    <option key={e.ID} value={e.ID}>{e.Nombre} ({e.Proyecto})</option>
+                  <option value="">-- Pertenece a --</option>
+                  {padresDisponiblesParaSubensamble.map(e => (
+                    <option key={e.ID} value={e.ID}>[{e.TipoNivel}] {e.Nombre} ({e.Proyecto})</option>
                   ))}
                 </select>
               </div>
@@ -543,11 +548,11 @@ export default function GestionIngenieria({ disenos, proyectosUnicos, API_URL, r
 
             {tipoNivel === 'Pieza' && (
               <div>
-                <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px', fontSize: '13px' }}>Sub-ensamble Padre:*</label>
+                <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px', fontSize: '13px' }}>Elemento Padre (Ensamble o Sub-ensamble):*</label>
                 <select value={padreID} onChange={(e) => setPadreID(e.target.value)} required style={{ width: '100%', padding: '9px', borderRadius: '4px', border: '1px solid #ccc' }}>
-                  <option value="">-- Pertenece al Sub-ensamble --</option>
-                  {subEnsamblesDisponibles.map(s => (
-                    <option key={s.ID} value={s.ID}>{s.Nombre} ({s.Proyecto})</option>
+                  <option value="">-- Pertenece a --</option>
+                  {padresDisponiblesParaPieza.map(s => (
+                    <option key={s.ID} value={s.ID}>[{s.TipoNivel}] {s.Nombre} ({s.Proyecto})</option>
                   ))}
                 </select>
               </div>
