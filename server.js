@@ -20,6 +20,12 @@ app.use(cors({ origin: '*', methods: ['GET', 'POST', 'PUT', 'DELETE'], allowedHe
 const storage = multer.memoryStorage()
 const upload = multer({ storage, limits: { fileSize: 25 * 1024 * 1024 } })
 
+// Middleware para recibir el GLB y PDF en la sección de Ingeniería
+const uploadIngenieria = upload.fields([
+  { name: 'archivoGlb', maxCount: 1 },
+  { name: 'archivoPdf', maxCount: 1 }
+])
+
 const config = {
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
@@ -38,7 +44,7 @@ async function subirABlobYObtenerSAS(file) {
     const blobServiceClient = BlobServiceClient.fromConnectionString(connectionString)
     const containerClient = blobServiceClient.getContainerClient(containerName)
     const nombreLimpio = file.originalname.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9.\-_]/g, '_')
-    const blobName = `compra_${Date.now()}_${nombreLimpio}`
+    const blobName = `archivo_${Date.now()}_${nombreLimpio}`
     const blockBlobClient = containerClient.getBlockBlobClient(blobName)
 
     await blockBlobClient.uploadData(file.buffer, { blobHTTPHeaders: { blobContentType: file.mimetype || 'application/octet-stream' } })
@@ -62,7 +68,7 @@ async function subirABlobYObtenerSAS(file) {
 }
 
 // -------------------------------------------------------------
-// 1. CLIENTES (Sin la columna Contacto)
+// 1. CLIENTES
 // -------------------------------------------------------------
 app.get('/api/clientes', async (req, res) => {
   try {
@@ -89,7 +95,7 @@ app.post('/api/clientes', async (req, res) => {
 })
 
 // -------------------------------------------------------------
-// 2. CONTACTOS CLIENTES (Nueva tabla)
+// 2. CONTACTOS CLIENTES
 // -------------------------------------------------------------
 app.get('/api/contactos', async (req, res) => {
   try {
@@ -198,7 +204,7 @@ app.post('/api/proyectos', async (req, res) => {
 })
 
 // -------------------------------------------------------------
-// 5. COMPRAS (Soporte para columna Estatus: Cotizado / Comprado)
+// 5. COMPRAS
 // -------------------------------------------------------------
 app.get('/api/datos', async (req, res) => {
   try {
@@ -292,6 +298,95 @@ app.put('/api/compras/:id', upload.single('archivo'), async (req, res) => {
     res.json({ mensaje: 'Registro actualizado exitosamente', urlSaaS: finalUrlSaaS })
   } catch (error) {
     res.status(500).send(error.message)
+  }
+})
+
+// -------------------------------------------------------------
+// 6. INGENIERÍA Y DISEÑO (Estructura BOM + Seguimiento de Avance)
+// -------------------------------------------------------------
+app.get('/api/ingenieria', async (req, res) => {
+  try {
+    let pool = await sql.connect(config)
+    let resultado = await pool.request().query('SELECT * FROM Ingenieria ORDER BY FechaCreacion DESC')
+    res.json(resultado.recordset)
+  } catch (error) {
+    res.status(500).send(error.message)
+  }
+})
+
+app.post('/api/ingenieria', uploadIngenieria, async (req, res) => {
+  const { nombre, proyecto, tipoNivel, padreID, cantidadRequerida } = req.body
+  const fileGlb = req.files && req.files['archivoGlb'] ? req.files['archivoGlb'][0] : null
+  const filePdf = req.files && req.files['archivoPdf'] ? req.files['archivoPdf'][0] : null
+
+  try {
+    let urlGLB = null
+    let urlPDF = null
+
+    if (fileGlb) urlGLB = await subirABlobYObtenerSAS(fileGlb)
+    if (filePdf) urlPDF = await subirABlobYObtenerSAS(filePdf)
+
+    let pool = await sql.connect(config)
+    await pool.request()
+      .input('Nombre', sql.NVarChar, nombre || '')
+      .input('Proyecto', sql.NVarChar, proyecto || '')
+      .input('TipoNivel', sql.NVarChar, tipoNivel || 'Ensamble')
+      .input('PadreID', sql.Int, padreID && padreID !== 'null' && padreID !== '' ? parseInt(padreID, 10) : null)
+      .input('CantidadRequerida', sql.Int, parseInt(cantidadRequerida, 10) || 1)
+      .input('CantidadLista', sql.Int, 0)
+      .input('EstatusAvance', sql.NVarChar, 'Pendiente')
+      .input('UrlGLB', sql.NVarChar, urlGLB)
+      .input('UrlPDF', sql.NVarChar, urlPDF)
+      .query(`
+        INSERT INTO Ingenieria (Nombre, Proyecto, TipoNivel, PadreID, CantidadRequerida, CantidadLista, EstatusAvance, UrlGLB, UrlPDF, FechaCreacion)
+        VALUES (@Nombre, @Proyecto, @TipoNivel, @PadreID, @CantidadRequerida, @CantidadLista, @EstatusAvance, @UrlGLB, @UrlPDF, GETDATE())
+      `)
+
+    res.json({ mensaje: 'Registro de ingeniería guardado correctamente', urlGLB, urlPDF })
+  } catch (error) {
+    res.status(500).send(error.message)
+  }
+})
+
+// PUT: Actualizar la cantidad lista y cantidad requerida (recalculando estatus)
+app.put('/api/ingenieria/:id/avance', async (req, res) => {
+  const { id } = req.params
+  const { cantidadLista, cantidadRequerida } = req.body
+
+  const idNumero = parseInt(id, 10)
+  if (isNaN(idNumero)) {
+    return res.status(400).send('ID de pieza inválido.')
+  }
+
+  const cantLista = parseInt(cantidadLista, 10) || 0
+  const cantReq = parseInt(cantidadRequerida, 10) || 1
+
+  let estatus = 'Pendiente'
+  if (cantLista >= cantReq) {
+    estatus = 'Completado'
+  } else if (cantLista > 0) {
+    estatus = 'En Proceso'
+  }
+
+  try {
+    let pool = await sql.connect(config)
+    await pool.request()
+      .input('ID', sql.Int, idNumero)
+      .input('CantidadLista', sql.Int, cantLista)
+      .input('CantidadRequerida', sql.Int, cantReq)
+      .input('EstatusAvance', sql.NVarChar, estatus)
+      .query(`
+        UPDATE Ingenieria 
+        SET CantidadLista = @CantidadLista,
+            CantidadRequerida = @CantidadRequerida,
+            EstatusAvance = @EstatusAvance
+        WHERE ID = @ID
+      `)
+
+    res.json({ mensaje: 'Avance y requerimiento actualizados correctamente', estatus })
+  } catch (error) {
+    console.error('Error al actualizar avance:', error)
+    res.status(500).send(`Error DB: ${error.message}`)
   }
 })
 
