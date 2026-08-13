@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import GlbViewer from './GlbViewer'
 
-export default function GestionIngenieria({ disenos, proyectosUnicos, API_URL, recargarDatos }) {
+export default function GestionIngenieria({ disenos = [], proyectosUnicos = [], API_URL, recargarDatos }) {
   // Pestañas internas: 'explorador', 'avance', 'nuevo'
   const [subPestana, setSubPestana] = useState('explorador')
 
@@ -30,11 +30,11 @@ export default function GestionIngenieria({ disenos, proyectosUnicos, API_URL, r
   // Filtrado de elementos por proyecto y texto
   const disenosFiltrados = disenos.filter(d => {
     const coincideProyecto = proyectoFiltro ? d.Proyecto === proyectoFiltro : true
-    const coincideTexto = d.Nombre.toLowerCase().includes(busqueda.toLowerCase())
+    const coincideTexto = d.Nombre ? d.Nombre.toLowerCase().includes(busqueda.toLowerCase()) : true
     return coincideProyecto && coincideTexto
   })
 
-  // Padres disponibles flexibles (Permite sub-ensambles dentro de sub-ensambles y piezas en cualquier nivel superior)
+  // Padres disponibles flexibles
   const padresDisponiblesParaSubensamble = disenos.filter(
     d => (d.TipoNivel === 'Ensamble' || d.TipoNivel === 'Subensamble') && (!proyectoForm || d.Proyecto === proyectoForm)
   )
@@ -89,7 +89,7 @@ export default function GestionIngenieria({ disenos, proyectosUnicos, API_URL, r
     }
   }
 
-  // Actualizar cantidades (Lista y/o Requerida) en tiempo real en Azure SQL
+  // Actualizar cantidades en tiempo real en Azure SQL
   const actualizarCantidades = async (id, nuevaLista, nuevaRequerida) => {
     try {
       const res = await fetch(`${API_URL}/api/ingenieria/${id}/avance`, {
@@ -109,30 +109,46 @@ export default function GestionIngenieria({ disenos, proyectosUnicos, API_URL, r
     }
   }
 
-  // Función auxiliar para calcular totales acumulados de hijos/piezas
-  const calcularAvanceAcumulado = (nodoId) => {
+  // CÁLCULO DE CONJUNTOS / ENSAMBLES COMPLETOS LISTOS
+  const calcularAvanceAcumulado = (nodoId, multiplicadorPadre = 1) => {
+    const elemento = disenosFiltrados.find(d => d.ID === nodoId)
+    if (!elemento) return { reqTotal: 0, listaTotal: 0 }
+
+    const reqUnitaria = elemento.CantidadRequerida || 1
+    const reqEfectiva = reqUnitaria * multiplicadorPadre
     const hijos = disenosFiltrados.filter(d => d.PadreID === nodoId)
-    
-    // Si no tiene hijos (es una pieza), devuelve sus propios valores
+
+    // Si es una pieza hoja (sin sub-elementos)
     if (hijos.length === 0) {
-      const elemento = disenosFiltrados.find(d => d.ID === nodoId)
       return {
-        req: elemento?.CantidadRequerida || 1,
-        lista: elemento?.CantidadLista || 0
+        reqTotal: reqEfectiva,
+        listaTotal: elemento.CantidadLista || 0
       }
     }
 
-    // Si tiene hijos (es Subensamble o Ensamble), acumula los valores de sus descendientes
-    let totalReq = 0
-    let totalLista = 0
+    // Si es Ensamble o Subensamble:
+    // Calculamos cuántos juegos o conjuntos completos se pueden armar según las piezas listas de sus hijos
+    let totalReqPiezas = 0
+    let conjuntosPosibles = Infinity
 
     hijos.forEach(hijo => {
-      const acumulado = calcularAvanceAcumulado(hijo.ID)
-      totalReq += acumulado.req
-      totalLista += acumulado.lista
+      const acum = calcularAvanceAcumulado(hijo.ID, reqEfectiva)
+      totalReqPiezas += acum.reqTotal
+
+      const reqPorPadre = hijo.CantidadRequerida || 1
+      const conjuntosQueAporta = Math.floor((acum.listaTotal) / reqPorPadre)
+      if (conjuntosQueAporta < conjuntosPosibles) {
+        conjuntosPosibles = conjuntosQueAporta
+      }
     })
 
-    return { req: totalReq, lista: totalLista }
+    if (conjuntosPosibles === Infinity) conjuntosPosibles = 0
+
+    return { 
+      reqTotal: reqEfectiva, 
+      listaTotal: conjuntosPosibles,
+      piezasEfectivasReq: totalReqPiezas
+    }
   }
 
   // Render para Explorador BOM y Visor 3D
@@ -164,7 +180,7 @@ export default function GestionIngenieria({ disenos, proyectosUnicos, API_URL, r
                   backgroundColor: item.TipoNivel === 'Ensamble' ? '#e3f2fd' : item.TipoNivel === 'Subensamble' ? '#fff3cd' : '#e8f5e9',
                   color: item.TipoNivel === 'Ensamble' ? '#0d47a1' : item.TipoNivel === 'Subensamble' ? '#856404' : '#1b5e20'
                 }}>
-                  {item.TipoNivel[0]}
+                  {item.TipoNivel ? item.TipoNivel[0] : 'E'}
                 </span>
 
                 <span style={{ fontWeight: item.TipoNivel === 'Ensamble' ? 'bold' : 'normal', fontSize: '13px' }}>
@@ -204,8 +220,8 @@ export default function GestionIngenieria({ disenos, proyectosUnicos, API_URL, r
     })
   }
 
-  // Render para Tabla de Control de Avance con edición doble (Requerida y Lista)
-  const renderizarFilasAvance = (padreId = null, nivelProfundidad = 0) => {
+  // Render para Tabla de Control de Avance
+  const renderizarFilasAvance = (padreId = null, nivelProfundidad = 0, multiplicadorAcumulado = 1) => {
     const nodos = disenosFiltrados.filter(d => {
       if (padreId === null) return !d.PadreID || d.TipoNivel === 'Ensamble'
       return d.PadreID === padreId
@@ -215,17 +231,18 @@ export default function GestionIngenieria({ disenos, proyectosUnicos, API_URL, r
       const tieneHijos = disenosFiltrados.some(h => h.PadreID === item.ID)
       const estaAbierto = !!filasAbiertas[item.ID]
 
-      // Cálculo dinámico según si es hoja (Pieza) o contenedor (Subensamble/Ensamble)
-      let req = item.CantidadRequerida || 1
-      let lista = item.CantidadLista || 0
+      const reqUnitaria = item.CantidadRequerida || 1
+      const multiplicadorActual = multiplicadorAcumulado * reqUnitaria
+
+      let reqTotal = reqUnitaria * multiplicadorAcumulado
+      let listaTotal = item.CantidadLista || 0
 
       if (tieneHijos) {
-        const acumulado = calcularAvanceAcumulado(item.ID)
-        req = acumulado.req
-        lista = acumulado.lista
+        const acumulado = calcularAvanceAcumulado(item.ID, multiplicadorAcumulado)
+        listaTotal = acumulado.listaTotal
       }
 
-      const porcentaje = req > 0 ? Math.min(100, Math.round((lista / req) * 100)) : 0
+      const porcentaje = reqTotal > 0 ? Math.min(100, Math.round((listaTotal / reqTotal) * 100)) : 0
       const colorBarra = porcentaje === 100 ? '#28a745' : porcentaje > 0 ? '#ffc107' : '#dc3545'
 
       return (
@@ -254,43 +271,45 @@ export default function GestionIngenieria({ disenos, proyectosUnicos, API_URL, r
               </div>
             </td>
 
-            {/* Cantidad Requerida: Editable en Piezas, Calculada en Ensambles/Sub-ensambles */}
+            {/* Cantidad Requerida Unitaria y Total */}
             <td style={{ padding: '10px', textAlign: 'center' }}>
-              {tieneHijos ? (
-                <span style={{ fontWeight: 'bold', color: '#495057', background: '#e9ecef', padding: '4px 12px', borderRadius: '4px', fontSize: '13px' }}>
-                  {req}
-                </span>
-              ) : (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
                 <input 
                   type="number" 
                   min="1" 
-                  defaultValue={req} 
+                  defaultValue={reqUnitaria} 
                   onBlur={(e) => {
                     const val = parseInt(e.target.value, 10)
-                    if (!isNaN(val) && val > 0 && val !== req) {
-                      actualizarCantidades(item.ID, lista, val)
+                    if (!isNaN(val) && val > 0 && val !== reqUnitaria) {
+                      actualizarCantidades(item.ID, item.CantidadLista || 0, val)
                     }
                   }}
-                  style={{ width: '60px', padding: '4px', textAlign: 'center', borderRadius: '4px', border: '1px solid #ced4da', fontWeight: 'bold' }}
+                  style={{ width: '50px', padding: '3px', textAlign: 'center', borderRadius: '4px', border: '1px solid #ced4da', fontWeight: 'bold' }}
                 />
-              )}
+                {nivelProfundidad > 0 && (
+                  <span style={{ fontSize: '11px', color: '#6c757d' }}>
+                    (Total: <strong>{reqTotal}</strong>)
+                  </span>
+                )}
+              </div>
             </td>
 
-            {/* Cantidad Lista: Editable en Piezas, Calculada en Ensambles/Sub-ensambles */}
+            {/* Cantidad Lista: Muestra los conjuntos completos alcanzados en ensambles o la cantidad física en piezas */}
             <td style={{ padding: '10px', textAlign: 'center' }}>
               {tieneHijos ? (
-                <span style={{ fontWeight: 'bold', color: '#495057', background: '#e9ecef', padding: '4px 12px', borderRadius: '4px', fontSize: '13px' }}>
-                  {lista}
+                <span style={{ fontWeight: 'bold', color: '#0d47a1', background: '#e3f2fd', padding: '4px 12px', borderRadius: '4px', fontSize: '13px' }}>
+                  {listaTotal}
                 </span>
               ) : (
                 <input 
                   type="number" 
                   min="0" 
-                  defaultValue={lista} 
+                  max={reqTotal * 2}
+                  defaultValue={item.CantidadLista || 0} 
                   onBlur={(e) => {
                     const val = parseInt(e.target.value, 10)
-                    if (!isNaN(val) && val >= 0 && val !== lista) {
-                      actualizarCantidades(item.ID, val, req)
+                    if (!isNaN(val) && val >= 0 && val !== (item.CantidadLista || 0)) {
+                      actualizarCantidades(item.ID, val, reqUnitaria)
                     }
                   }}
                   style={{ width: '60px', padding: '4px', textAlign: 'center', borderRadius: '4px', border: '1px solid #ced4da', fontWeight: 'bold' }}
@@ -320,24 +339,25 @@ export default function GestionIngenieria({ disenos, proyectosUnicos, API_URL, r
             </td>
           </tr>
 
-          {estaAbierto && renderizarFilasAvance(item.ID, nivelProfundidad + 1)}
+          {estaAbierto && renderizarFilasAvance(item.ID, nivelProfundidad + 1, multiplicadorActual)}
         </React.Fragment>
       )
     })
   }
 
-  // Resumen general del proyecto considerando elementos raíz
+  // Resumen general del proyecto considerando ensambles raíz
   const ensamblesRaiz = disenosFiltrados.filter(d => !d.PadreID || d.TipoNivel === 'Ensamble')
-  let totalRequerido = 0
-  let totalListo = 0
+  let totalRequeridoEnsamble = 0
+  let totalListoEnsamble = 0
 
   ensamblesRaiz.forEach(e => {
-    const acum = calcularAvanceAcumulado(e.ID)
-    totalRequerido += acum.req
-    totalListo += acum.lista
+    const req = e.CantidadRequerida || 1
+    totalRequeridoEnsamble += req
+    const acum = calcularAvanceAcumulado(e.ID, 1)
+    totalListoEnsamble += acum.listaTotal
   })
 
-  const PorcentajeGeneral = totalRequerido > 0 ? Math.round((totalListo / totalRequerido) * 100) : 0
+  const PorcentajeGeneral = totalRequeridoEnsamble > 0 ? Math.round((totalListoEnsamble / totalRequeridoEnsamble) * 100) : 0
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', width: '100%' }}>
@@ -459,9 +479,9 @@ export default function GestionIngenieria({ disenos, proyectosUnicos, API_URL, r
           {/* Tarjeta de Resumen General */}
           <div style={{ background: '#f8f9fa', padding: '15px 20px', borderRadius: '8px', border: '1px solid #dee2e6', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
             <div>
-              <h3 style={{ margin: 0, color: '#17a2b8' }}>📊 Avance General del Proyecto</h3>
+              <h3 style={{ margin: 0, color: '#17a2b8' }}>📊 Avance General de Ensambles Completos</h3>
               <p style={{ margin: '4px 0 0 0', color: '#6c757d', fontSize: '13px' }}>
-                Piezas Listas: <strong>{totalListo}</strong> / {totalRequerido} requeridas
+                Ensambles Terminados: <strong>{totalListoEnsamble}</strong> / {totalRequeridoEnsamble} requeridos
               </p>
             </div>
             
@@ -477,7 +497,7 @@ export default function GestionIngenieria({ disenos, proyectosUnicos, API_URL, r
           </div>
 
           <h4 style={{ marginTop: 0, marginBottom: '12px', borderBottom: '2px solid #e0e0e0', paddingBottom: '8px', color: '#333' }}>
-            🌳 Lista Jerárquica de Materiales y Fabricación
+            🌳 Lista Jerárquica de Materiales y Fabricación (BOM)
           </h4>
 
           <div style={{ overflowX: 'auto' }}>
@@ -485,8 +505,8 @@ export default function GestionIngenieria({ disenos, proyectosUnicos, API_URL, r
               <thead>
                 <tr style={{ background: '#f8f9fa', textAlign: 'left', borderBottom: '2px solid #dee2e6', fontSize: '13px' }}>
                   <th style={{ padding: '10px' }}>Elemento / Estructura</th>
-                  <th style={{ padding: '10px', textAlign: 'center' }}>Cant. Req.</th>
-                  <th style={{ padding: '10px', textAlign: 'center' }}>Cant. Lista</th>
+                  <th style={{ padding: '10px', textAlign: 'center' }}>Cant. Unit. (Total)</th>
+                  <th style={{ padding: '10px', textAlign: 'center' }}>Cant. Lista / Juegos</th>
                   <th style={{ padding: '10px' }}>Avance %</th>
                   <th style={{ padding: '10px', textAlign: 'center' }}>Estatus</th>
                 </tr>
@@ -501,7 +521,7 @@ export default function GestionIngenieria({ disenos, proyectosUnicos, API_URL, r
             </table>
           </div>
           <p style={{ fontSize: '12px', color: '#888', marginTop: '12px', fontStyle: 'italic' }}>
-            💡 Nota: Modifica la "Cant. Req." o "Cant. Lista" únicamente en las piezas individuales. Los ensambles y sub-ensambles actualizarán su progreso acumulado automáticamente.
+            💡 Nota: La "Cant. Lista" en Sub-ensambles y Ensambles calcula automáticamente cuántos conjuntos completos se pueden armar con las piezas disponibles.
           </p>
         </div>
       )}
@@ -564,7 +584,7 @@ export default function GestionIngenieria({ disenos, proyectosUnicos, API_URL, r
             </div>
 
             <div>
-              <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px', fontSize: '13px' }}>Cantidad Requerida:*</label>
+              <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px', fontSize: '13px' }}>Cantidad Unitaria Requerida:*</label>
               <input type="number" min="1" value={cantidadRequerida} onChange={(e) => setCantidadRequerida(e.target.value)} required style={{ width: '100%', padding: '9px', borderRadius: '4px', border: '1px solid #ccc', boxSizing: 'border-box' }} />
             </div>
 
