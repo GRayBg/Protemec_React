@@ -18,7 +18,7 @@ app.use(express.json())
 app.use(cors({ origin: '*', methods: ['GET', 'POST', 'PUT', 'DELETE'], allowedHeaders: ['Content-Type', 'Authorization'] }))
 
 const storage = multer.memoryStorage()
-const upload = multer({ storage, limits: { fileSize: 25 * 1024 * 1024 } })
+const upload = multer({ storage, limits: { fileSize: 200 * 1024 * 1024 } })
 
 // Middleware para recibir el GLB y PDF en la sección de Ingeniería
 const uploadIngenieria = upload.fields([
