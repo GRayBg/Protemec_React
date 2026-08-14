@@ -22,6 +22,9 @@ export default function FormularioCompra({
 }) {
   const fileInputRef = useRef(null)
 
+  // Cálculo automático del IVA basado en el costo actual
+  const costoConIva = costo ? (parseFloat(costo) * 1.16).toFixed(2) : ''
+
   return (
     <form onSubmit={manejarEnvio} style={estilos.formulario}>
       <h3 style={{ marginTop: 0, marginBottom: '15px' }}>
@@ -86,10 +89,22 @@ export default function FormularioCompra({
           }} style={estilos.input} />
         </div>
 
-        {/* Costo Total */}
+        {/* Costo Subtotal (Antes Costo Total) */}
         <div style={{ flex: '1', minWidth: '120px' }}>
-          <label style={estilos.label}>Costo Total ($):</label>
+          <label style={estilos.label}>Subtotal ($):</label>
           <input type="number" step="0.01" value={costo} onChange={e => setCosto(e.target.value)} required style={estilos.input} />
+        </div>
+
+        {/* NUEVO: Costo Total con IVA */}
+        <div style={{ flex: '1', minWidth: '120px' }}>
+          <label style={estilos.label}>Total c/ IVA ($):</label>
+          <input 
+            type="number" 
+            value={costoConIva} 
+            readOnly 
+            style={{ ...estilos.input, backgroundColor: '#e9ecef', color: '#495057', cursor: 'not-allowed', fontWeight: 'bold' }} 
+            title="Calculado automáticamente (16%)"
+          />
         </div>
 
         {/* Archivo */}

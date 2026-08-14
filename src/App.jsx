@@ -5,11 +5,28 @@ import GestionClientes from './components/GestionClientes'
 import GestionUbicaciones from './components/GestionUbicaciones'
 import GestionProyectos from './components/GestionProyectos'
 import GestionIngenieria from './components/GestionIngenieria'
+import GestionAlmacen3D from './components/GestionAlmacen3D'
+import GestionAlmacenInventario from './components/GestionAlmacenInventario'
+import GestionChatbot from './components/GestionChatbot'
+import ModalConfiguracion from './components/ModalConfiguracion'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 
 export default function App() {
-  const [pestanaActiva, setPestanaActiva] = useState('consulta')
+  const [moduloPrincipal, setModuloPrincipal] = useState('compras')
+  const [menuAbierto, setMenuAbierto] = useState(false)
+  
+  const [hoverModulo, setHoverModulo] = useState(null)
+  const [hoverSubmenuItem, setHoverSubmenuItem] = useState(null)
+  const [hoverHamburguesa, setHoverHamburguesa] = useState(false)
+  const [hoverConfig, setHoverConfig] = useState(false)
+
+  const [mostrarModalConfig, setMostrarModalConfig] = useState(false)
+
+  const [pestanaCompras, setPestanaCompras] = useState('consulta')
+  const [pestanaIngenieria, setPestanaIngenieria] = useState('explorador')
+  const [pestanaAlmacen, setPestanaAlmacen] = useState('inventario')
+
   const [compras, setCompras] = useState([])
   const [clientes, setClientes] = useState([])
   const [ubicaciones, setUbicaciones] = useState([])
@@ -19,7 +36,6 @@ export default function App() {
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState(null)
 
-  // Estados del Formulario de Compras
   const [idEditando, setIdEditando] = useState(null)
   const [proveedor, setProveedor] = useState('')
   const [costo, setCosto] = useState('')
@@ -85,7 +101,9 @@ export default function App() {
 
     const valorFecha = fila.FechaCompra || fila.fechaCompra || fila.Fecha || fila.fecha
     setFechaCompra(valorFecha ? String(valorFecha).split('T')[0] : '')
-    setPestanaActiva('captura')
+    
+    setModuloPrincipal('compras')
+    setPestanaCompras('captura')
   }
 
   const cancelarEdicion = () => {
@@ -123,7 +141,7 @@ export default function App() {
       cancelarEdicion()
       setGuardando(false)
       cargarTodo()
-      setPestanaActiva('consulta')
+      setPestanaCompras('consulta')
     } catch (err) {
       alert('Error: ' + err.message)
       setGuardando(false)
@@ -133,96 +151,82 @@ export default function App() {
   if (cargando) return <div style={{ padding: '40px', fontFamily: 'sans-serif' }}>⌛ Conectando a Azure SQL...</div>
   if (error) return <div style={{ padding: '40px', color: 'red', fontFamily: 'sans-serif' }}>❌ Error: {error}</div>
 
-  // ----------------------------------------------------------------------
-  // VISTA DE INGENIERÍA CON EL MISMO ANCHO QUE COMPRAS (maxWidth: 1400px)
-  // ----------------------------------------------------------------------
-  if (pestanaActiva === 'ingenieria') {
-    return (
-      <div style={{ padding: '30px', fontFamily: 'Segoe UI, sans-serif', maxWidth: '1400px', margin: '0 auto' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', paddingBottom: '12px', borderBottom: '2px solid #007bff' }}>
-          <div>
-            <h2 style={{ margin: 0, color: '#1a252f' }}>🛠️ Módulo de Ingeniería y Diseño 3D</h2>
-            <p style={{ margin: '4px 0 0 0', color: '#6c757d', fontSize: '13px' }}>
-              Gestión de estructura BOM, archivos CAD (.GLB) y planos (.PDF)
-            </p>
+  return (
+    <div style={estilos.layout}>
+      <div style={estilos.sidebar(menuAbierto)}>
+        <div>
+          <button onClick={() => setMenuAbierto(!menuAbierto)} style={estilos.btnHamburguesa(hoverHamburguesa)} onMouseEnter={() => setHoverHamburguesa(true)} onMouseLeave={() => setHoverHamburguesa(false)}>☰</button>
+          <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+            
+            <div style={{ position: 'relative' }} onMouseEnter={() => setHoverModulo('compras')} onMouseLeave={() => { setHoverModulo(null); setHoverSubmenuItem(null); }}>
+              <div onClick={() => { setModuloPrincipal('compras'); setPestanaCompras('consulta'); cancelarEdicion(); }} style={estilos.itemMenu(hoverModulo === 'compras')}>
+                <span style={estilos.iconoMenu}>🛒</span>{menuAbierto && <span>Compras</span>}
+              </div>
+              {hoverModulo === 'compras' && (
+                <div style={estilos.submenuFlotante}>
+                  <div style={estilos.submenuTitulo}>Módulo de Compras</div>
+                  <div onClick={() => { setModuloPrincipal('compras'); setPestanaCompras('consulta'); setHoverModulo(null); }} style={estilos.itemSubmenu()}>🔍 Consulta Compras</div>
+                  <div onClick={() => { setModuloPrincipal('compras'); setPestanaCompras('captura'); setHoverModulo(null); }} style={estilos.itemSubmenu()}>➕ Captura Compra / Cotización</div>
+                  <div onClick={() => { setModuloPrincipal('compras'); setPestanaCompras('clientes'); setHoverModulo(null); }} style={estilos.itemSubmenu()}>🏢 Clientes & Contactos</div>
+                </div>
+              )}
+            </div>
+            
+            <div style={{ position: 'relative' }} onMouseEnter={() => setHoverModulo('ingenieria')} onMouseLeave={() => { setHoverModulo(null); setHoverSubmenuItem(null); }}>
+              <div onClick={() => { setModuloPrincipal('ingenieria'); setPestanaIngenieria('explorador'); }} style={estilos.itemMenu(hoverModulo === 'ingenieria')}>
+                <span style={estilos.iconoMenu}>🛠️</span>{menuAbierto && <span>Ingeniería</span>}
+              </div>
+            </div>
+
+            <div style={{ position: 'relative' }} onMouseEnter={() => setHoverModulo('almacen')} onMouseLeave={() => { setHoverModulo(null); setHoverSubmenuItem(null); }}>
+              <div onClick={() => { setModuloPrincipal('almacen'); setPestanaAlmacen('inventario'); }} style={estilos.itemMenu(hoverModulo === 'almacen')}>
+                <span style={estilos.iconoMenu}>📦</span>{menuAbierto && <span>Almacén</span>}
+              </div>
+              {hoverModulo === 'almacen' && (
+                <div style={estilos.submenuFlotante}>
+                  <div style={estilos.submenuTitulo}>Control de Almacén</div>
+                  <div onClick={() => { setModuloPrincipal('almacen'); setPestanaAlmacen('inventario'); setHoverModulo(null); }} style={estilos.itemSubmenu()}>📊 Inventario General (3D)</div>
+                  <div onClick={() => { setModuloPrincipal('almacen'); setPestanaAlmacen('entradas'); setHoverModulo(null); }} style={estilos.itemSubmenu()}>📥 Entradas / Salidas</div>
+                </div>
+              )}
+            </div>
+
+            <div style={{ position: 'relative' }} onMouseEnter={() => setHoverModulo('chatbot')} onMouseLeave={() => setHoverModulo(null)}>
+              <div onClick={() => { setModuloPrincipal('chatbot'); }} style={estilos.itemMenu(hoverModulo === 'chatbot' || moduloPrincipal === 'chatbot')}>
+                <span style={estilos.iconoMenu}>🤖</span>{menuAbierto && <span>Chatbot IA</span>}
+              </div>
+            </div>
           </div>
-          <button 
-            onClick={() => setPestanaActiva('consulta')} 
-            style={{ 
-              backgroundColor: '#6c757d', 
-              color: '#fff', 
-              border: 'none', 
-              padding: '8px 16px', 
-              borderRadius: '6px', 
-              fontWeight: 'bold', 
-              cursor: 'pointer'
-            }}
-          >
-            ⬅️ Volver al Sistema Principal
-          </button>
         </div>
 
-        <GestionIngenieria 
-          disenos={disenos} 
-          proyectosUnicos={proyectosUnicos} 
-          API_URL={API_URL} 
-          recargarDatos={cargarTodo} 
-        />
-      </div>
-    )
-  }
-
-  // ----------------------------------------------------------------------
-  // VISTA PRINCIPAL
-  // ----------------------------------------------------------------------
-  return (
-    <div style={{ padding: '30px', fontFamily: 'Segoe UI, sans-serif', maxWidth: '1400px', margin: '0 auto' }}>
-      <h2 style={{ textAlign: 'center' }}>Sistema de Control de Compras, Proyectos y Clientes</h2>
-
-      <div style={estilos.contenedorPestanas}>
-        <button onClick={() => setPestanaActiva('consulta')} style={pestanaActiva === 'consulta' ? estilos.pestanaActiva : estilos.pestanaInactiva}>🔍 Consulta Compras</button>
-        <button onClick={() => { setPestanaActiva('captura'); if (!idEditando) cancelarEdicion(); }} style={pestanaActiva === 'captura' ? estilos.pestanaActiva : estilos.pestanaInactiva}>{idEditando ? `✏️ Editando #${idEditando}` : '➕ Captura Compra/Cotización'}</button>
-        <button onClick={() => setPestanaActiva('clientes')} style={pestanaActiva === 'clientes' ? estilos.pestanaActiva : estilos.pestanaInactiva}>🏢 Clientes & Contactos</button>
-        <button onClick={() => setPestanaActiva('ubicaciones')} style={pestanaActiva === 'ubicaciones' ? estilos.pestanaActiva : estilos.pestanaInactiva}>📍 Ubicaciones</button>
-        <button onClick={() => setPestanaActiva('proyectos')} style={pestanaActiva === 'proyectos' ? estilos.pestanaActiva : estilos.pestanaInactiva}>📁 Proyectos</button>
-        <button onClick={() => setPestanaActiva('ingenieria')} style={estilos.pestanaDestacada}>🛠️ Ingeniería y Diseño</button>
+        <div style={{ marginTop: 'auto', paddingBottom: '15px' }}>
+          <div onClick={() => setMostrarModalConfig(true)} onMouseEnter={() => setHoverConfig(true)} onMouseLeave={() => setHoverConfig(false)} style={estilos.itemMenu(hoverConfig)}>
+            <span style={estilos.iconoMenu}>⚙️</span>{menuAbierto && <span>Configuración</span>}
+          </div>
+        </div>
       </div>
 
-      {pestanaActiva === 'consulta' && (
-        <VistaConsulta compras={compras} iniciarEdicion={iniciarEdicion} proveedoresUnicos={proveedoresUnicos} categoriasUnicas={categoriasUnicas} proyectosUnicos={proyectosUnicos} />
-      )}
+      <div style={estilos.contenidoPrincipal(menuAbierto)}>
+        {moduloPrincipal === 'compras' && pestanaCompras === 'consulta' && <VistaConsulta compras={compras} iniciarEdicion={iniciarEdicion} proveedoresUnicos={proveedoresUnicos} categoriasUnicas={categoriasUnicas} proyectosUnicos={proyectosUnicos} />}
+        {moduloPrincipal === 'almacen' && pestanaAlmacen === 'inventario' && <GestionAlmacen3D API_URL={API_URL} />}
+        {moduloPrincipal === 'almacen' && pestanaAlmacen === 'entradas' && <GestionAlmacenInventario compras={compras} API_URL={API_URL} recargarDatos={cargarTodo} />}
+        {moduloPrincipal === 'chatbot' && <GestionChatbot />}
+        {/* ... (resto de tus módulos) */}
+      </div>
 
-      {pestanaActiva === 'captura' && (
-        <FormularioCompra 
-          idEditando={idEditando} proveedor={proveedor} setProveedor={setProveedor}
-          costo={costo} setCosto={setCosto} categoria={categoria} setCategoria={setCategoria}
-          producto={producto} setProducto={setProducto} proyecto={proyecto} setProyecto={setProyecto}
-          precioUnitario={precioUnitario} setPrecioUnitario={setPrecioUnitario} cantidad={cantidad} setCantidad={setCantidad}
-          fechaCompra={fechaCompra} setFechaCompra={setFechaCompra} estatus={estatus} setEstatus={setEstatus}
-          setArchivoSeleccionado={setArchivoSeleccionado} guardando={guardando} manejarEnvio={manejarEnvio}
-          cancelarEdicion={() => { cancelarEdicion(); setPestanaActiva('consulta'); }}
-          proveedoresUnicos={proveedoresUnicos} categoriasUnicas={categoriasUnicas} productosUnicos={productosUnicos} proyectosUnicos={proyectosUnicos}
-        />
-      )}
-
-      {pestanaActiva === 'clientes' && (
-        <GestionClientes clientes={clientes} ubicaciones={ubicaciones} contactos={contactos} API_URL={API_URL} recargarDatos={cargarTodo} />
-      )}
-
-      {pestanaActiva === 'ubicaciones' && (
-        <GestionUbicaciones ubicaciones={ubicaciones} clientes={clientes} API_URL={API_URL} recargarDatos={cargarTodo} />
-      )}
-
-      {pestanaActiva === 'proyectos' && (
-        <GestionProyectos proyectos={proyectos} clientes={clientes} ubicaciones={ubicaciones} API_URL={API_URL} recargarDatos={cargarTodo} />
-      )}
+      <ModalConfiguracion abierto={mostrarModalConfig} alCerrar={() => setMostrarModalConfig(false)} API_URL={API_URL} />
     </div>
   )
 }
 
 const estilos = {
-  contenedorPestanas: { display: 'flex', gap: '8px', marginBottom: '20px', borderBottom: '2px solid #e0e0e0', paddingBottom: '10px', flexWrap: 'wrap', justifyContent: 'center' },
-  pestanaActiva: { backgroundColor: '#007bff', color: '#fff', border: 'none', padding: '10px 16px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' },
-  pestanaInactiva: { backgroundColor: '#e9ecef', color: '#495057', border: 'none', padding: '10px 16px', borderRadius: '6px', fontWeight: '500', cursor: 'pointer' },
-  pestanaDestacada: { backgroundColor: '#007bff', color: '#fff', border: 'none', padding: '10px 16px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }
+  layout: { display: 'flex', minHeight: '100vh', backgroundColor: '#ffffff' },
+  sidebar: (abierto) => ({ width: abierto ? '250px' : '65px', backgroundColor: '#1a252f', color: 'white', transition: 'width 0.3s ease', position: 'fixed', height: '100vh', zIndex: 1000 }),
+  btnHamburguesa: (enHover) => ({ background: enHover ? 'rgba(255, 255, 255, 0.1)' : 'none', border: 'none', color: 'white', fontSize: '24px', cursor: 'pointer', padding: '15px 20px', textAlign: 'left' }),
+  itemMenu: (enHover) => ({ padding: '15px 20px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '15px', backgroundColor: enHover ? '#007bff' : 'transparent', borderLeft: enHover ? '4px solid #66b0ff' : '4px solid transparent', transition: 'all 0.2s', whiteSpace: 'nowrap', fontSize: '16px' }),
+  iconoMenu: { fontSize: '20px', minWidth: '25px', textAlign: 'center' },
+  submenuFlotante: { position: 'absolute', left: '100%', top: 0, backgroundColor: '#243342', boxShadow: '0 8px 24px rgba(0,0,0,0.3)', borderRadius: '0 8px 8px 0', padding: '6px 0', minWidth: '290px', zIndex: 2000 },
+  submenuTitulo: { padding: '8px 16px', fontSize: '11px', fontWeight: 'bold', textTransform: 'uppercase', color: '#8da2b5', borderBottom: '1px solid rgba(255, 255, 255, 0.1)' },
+  itemSubmenu: (enHover) => ({ padding: '10px 16px', fontSize: '13px', cursor: 'pointer', color: '#cfd8dc', '&:hover': { backgroundColor: '#007bff', color: '#ffffff' } }),
+  contenidoPrincipal: (menuAbierto) => ({ marginLeft: menuAbierto ? '250px' : '65px', padding: '20px', width: menuAbierto ? 'calc(100% - 250px)' : 'calc(100% - 65px)', transition: 'margin-left 0.3s ease', boxSizing: 'border-box' })
 }

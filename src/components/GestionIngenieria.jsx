@@ -1,10 +1,14 @@
 import React, { useState } from 'react'
 import GlbViewer from './GlbViewer'
 
-export default function GestionIngenieria({ disenos = [], proyectosUnicos = [], API_URL, recargarDatos }) {
-  // Pestañas internas: 'explorador', 'avance', 'nuevo'
-  const [subPestana, setSubPestana] = useState('explorador')
-
+export default function GestionIngenieria({ 
+  disenos = [], 
+  proyectosUnicos = [], 
+  API_URL, 
+  recargarDatos,
+  subVista = 'explorador',
+  setPestanaIngenieria
+}) {
   // Filtros y Búsqueda
   const [proyectoFiltro, setProyectoFiltro] = useState('')
   const [busqueda, setBusqueda] = useState('')
@@ -81,7 +85,7 @@ export default function GestionIngenieria({ disenos = [], proyectosUnicos = [], 
 
       await recargarDatos()
       alert('¡Registro guardado con éxito!')
-      setSubPestana('explorador')
+      if (setPestanaIngenieria) setPestanaIngenieria('explorador')
     } catch (err) {
       alert('Error: ' + err.message)
     } finally {
@@ -89,7 +93,7 @@ export default function GestionIngenieria({ disenos = [], proyectosUnicos = [], 
     }
   }
 
-  // Actualizar cantidades en tiempo real en Azure SQL
+  // Actualizar cantidades en tiempo real
   const actualizarCantidades = async (id, nuevaLista, nuevaRequerida) => {
     try {
       const res = await fetch(`${API_URL}/api/ingenieria/${id}/avance`, {
@@ -118,7 +122,6 @@ export default function GestionIngenieria({ disenos = [], proyectosUnicos = [], 
     const reqEfectiva = reqUnitaria * multiplicadorPadre
     const hijos = disenosFiltrados.filter(d => d.PadreID === nodoId)
 
-    // Si es una pieza hoja (sin sub-elementos)
     if (hijos.length === 0) {
       return {
         reqTotal: reqEfectiva,
@@ -126,8 +129,6 @@ export default function GestionIngenieria({ disenos = [], proyectosUnicos = [], 
       }
     }
 
-    // Si es Ensamble o Subensamble:
-    // Calculamos cuántos juegos o conjuntos completos se pueden armar según las piezas listas de sus hijos
     let totalReqPiezas = 0
     let conjuntosPosibles = Infinity
 
@@ -248,7 +249,6 @@ export default function GestionIngenieria({ disenos = [], proyectosUnicos = [], 
       return (
         <React.Fragment key={item.ID}>
           <tr style={{ borderBottom: '1px solid #f0f0f0', backgroundColor: nivelProfundidad === 0 ? '#ffffff' : nivelProfundidad === 1 ? '#fdfdfd' : '#f8f9fa' }}>
-            {/* Elemento / Nivel */}
             <td style={{ padding: '10px', paddingLeft: `${10 + nivelProfundidad * 20}px` }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 {tieneHijos ? (
@@ -271,7 +271,6 @@ export default function GestionIngenieria({ disenos = [], proyectosUnicos = [], 
               </div>
             </td>
 
-            {/* Cantidad Requerida Unitaria y Total */}
             <td style={{ padding: '10px', textAlign: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
                 <input 
@@ -283,7 +282,7 @@ export default function GestionIngenieria({ disenos = [], proyectosUnicos = [], 
                     if (!isNaN(val) && val > 0 && val !== reqUnitaria) {
                       actualizarCantidades(item.ID, item.CantidadLista || 0, val)
                     }
-                  }}
+                  }} 
                   style={{ width: '50px', padding: '3px', textAlign: 'center', borderRadius: '4px', border: '1px solid #ced4da', fontWeight: 'bold' }}
                 />
                 {nivelProfundidad > 0 && (
@@ -294,7 +293,6 @@ export default function GestionIngenieria({ disenos = [], proyectosUnicos = [], 
               </div>
             </td>
 
-            {/* Cantidad Lista: Muestra los conjuntos completos alcanzados en ensambles o la cantidad física en piezas */}
             <td style={{ padding: '10px', textAlign: 'center' }}>
               {tieneHijos ? (
                 <span style={{ fontWeight: 'bold', color: '#0d47a1', background: '#e3f2fd', padding: '4px 12px', borderRadius: '4px', fontSize: '13px' }}>
@@ -311,13 +309,12 @@ export default function GestionIngenieria({ disenos = [], proyectosUnicos = [], 
                     if (!isNaN(val) && val >= 0 && val !== (item.CantidadLista || 0)) {
                       actualizarCantidades(item.ID, val, reqUnitaria)
                     }
-                  }}
+                  }} 
                   style={{ width: '60px', padding: '4px', textAlign: 'center', borderRadius: '4px', border: '1px solid #ced4da', fontWeight: 'bold' }}
                 />
               )}
             </td>
 
-            {/* Barra de Progreso % */}
             <td style={{ padding: '10px', width: '180px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <div style={{ flex: 1, backgroundColor: '#e9ecef', height: '12px', borderRadius: '6px', overflow: 'hidden' }}>
@@ -327,7 +324,6 @@ export default function GestionIngenieria({ disenos = [], proyectosUnicos = [], 
               </div>
             </td>
 
-            {/* Estatus */}
             <td style={{ padding: '10px', textAlign: 'center' }}>
               <span style={{ 
                 fontSize: '11px', padding: '3px 8px', borderRadius: '12px', fontWeight: 'bold',
@@ -345,7 +341,7 @@ export default function GestionIngenieria({ disenos = [], proyectosUnicos = [], 
     })
   }
 
-  // Resumen general del proyecto considerando ensambles raíz
+  // Resumen general del proyecto
   const ensamblesRaiz = disenosFiltrados.filter(d => !d.PadreID || d.TipoNivel === 'Ensamble')
   let totalRequeridoEnsamble = 0
   let totalListoEnsamble = 0
@@ -362,77 +358,40 @@ export default function GestionIngenieria({ disenos = [], proyectosUnicos = [], 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', width: '100%' }}>
       
-      {/* BARRA DE NAVEGACIÓN INTERNA */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #e0e0e0', paddingBottom: '10px' }}>
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          <button 
-            onClick={() => setSubPestana('explorador')}
-            style={{
-              padding: '8px 16px', borderRadius: '6px', border: 'none', fontWeight: 'bold', cursor: 'pointer',
-              backgroundColor: subPestana === 'explorador' ? '#007bff' : '#e9ecef',
-              color: subPestana === 'explorador' ? '#ffffff' : '#495057'
-            }}
-          >
-            🔍 Explorador BOM & Visor 3D
-          </button>
+      {/* FILTRO SUPERIOR GENERAL (SOLO SE MUESTRA EN VISOR Y AVANCE) */}
+      {subVista !== 'nuevo' && (
+        <div style={{ background: '#ffffff', padding: '12px 20px', borderRadius: '8px', border: '1px solid #e0e0e0', display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'center', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
+          <div style={{ flex: '1', minWidth: '220px' }}>
+            <label style={{ fontWeight: 'bold', fontSize: '12px', display: 'block', marginBottom: '4px', color: '#495057' }}>📁 Proyecto Seleccionado:</label>
+            <select value={proyectoFiltro} onChange={(e) => setProyectoFiltro(e.target.value)} style={{ width: '100%', padding: '7px 10px', borderRadius: '4px', border: '1px solid #ced4da', fontSize: '13px' }}>
+              <option value="">-- Todos los Proyectos --</option>
+              {proyectosUnicos.map((p, i) => (
+                <option key={i} value={p}>{p}</option>
+              ))}
+            </select>
+          </div>
 
-          <button 
-            onClick={() => setSubPestana('avance')}
-            style={{
-              padding: '8px 16px', borderRadius: '6px', border: 'none', fontWeight: 'bold', cursor: 'pointer',
-              backgroundColor: subPestana === 'avance' ? '#17a2b8' : '#e9ecef',
-              color: subPestana === 'avance' ? '#ffffff' : '#495057'
-            }}
-          >
-            📊 Control de Avance de Fabricación
-          </button>
-          
-          <button 
-            onClick={() => setSubPestana('nuevo')}
-            style={{
-              padding: '8px 16px', borderRadius: '6px', border: 'none', fontWeight: 'bold', cursor: 'pointer',
-              backgroundColor: subPestana === 'nuevo' ? '#28a745' : '#e9ecef',
-              color: subPestana === 'nuevo' ? '#ffffff' : '#495057'
-            }}
-          >
-            ➕ Registrar Nueva Pieza / Sub-ensamble
-          </button>
+          <div style={{ flex: '2', minWidth: '300px' }}>
+            <label style={{ fontWeight: 'bold', fontSize: '12px', display: 'block', marginBottom: '4px', color: '#495057' }}>🔎 Búsqueda de Pieza o Componente:</label>
+            <input 
+              type="text" 
+              placeholder="Filtrar por nombre..." 
+              value={busqueda} 
+              onChange={(e) => setBusqueda(e.target.value)} 
+              style={{ width: '100%', padding: '7px 10px', borderRadius: '4px', border: '1px solid #ced4da', fontSize: '13px', boxSizing: 'border-box' }}
+            />
+          </div>
         </div>
-      </div>
-
-      {/* FILTRO SUPERIOR GENERAL */}
-      <div style={{ background: '#ffffff', padding: '12px 20px', borderRadius: '8px', border: '1px solid #e0e0e0', display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'center', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
-        <div style={{ flex: '1', minWidth: '220px' }}>
-          <label style={{ fontWeight: 'bold', fontSize: '12px', display: 'block', marginBottom: '4px', color: '#495057' }}>📁 Proyecto Seleccionado:</label>
-          <select value={proyectoFiltro} onChange={(e) => setProyectoFiltro(e.target.value)} style={{ width: '100%', padding: '7px 10px', borderRadius: '4px', border: '1px solid #ced4da', fontSize: '13px' }}>
-            <option value="">-- Todos los Proyectos --</option>
-            {proyectosUnicos.map((p, i) => (
-              <option key={i} value={p}>{p}</option>
-            ))}
-          </select>
-        </div>
-
-        <div style={{ flex: '2', minWidth: '300px' }}>
-          <label style={{ fontWeight: 'bold', fontSize: '12px', display: 'block', marginBottom: '4px', color: '#495057' }}>🔎 Búsqueda de Pieza o Componente:</label>
-          <input 
-            type="text" 
-            placeholder="Filtrar por nombre..." 
-            value={busqueda} 
-            onChange={(e) => setBusqueda(e.target.value)} 
-            style={{ width: '100%', padding: '7px 10px', borderRadius: '4px', border: '1px solid #ced4da', fontSize: '13px', boxSizing: 'border-box' }}
-          />
-        </div>
-      </div>
+      )}
 
       {/* PESTAÑA 1: EXPLORADOR BOM + VISOR 3D */}
-      {subPestana === 'explorador' && (
+      {subVista === 'explorador' && (
         <div style={{ display: 'grid', gridTemplateColumns: '35% 65%', gap: '20px', width: '100%', boxSizing: 'border-box', alignItems: 'start' }}>
-          
-          <div style={{ background: '#ffffff', padding: '15px', borderRadius: '8px', border: '1px solid #e0e0e0', boxSizing: 'border-box', height: '620px', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ background: '#ffffff', padding: '15px', borderRadius: '8px', border: '1px solid #e0e0e0', boxSizing: 'border-box', height: '640px', display: 'flex', flexDirection: 'column' }}>
             <h4 style={{ marginTop: 0, marginBottom: '12px', borderBottom: '1px solid #eee', paddingBottom: '8px', color: '#333' }}>
               📂 Estructura del Ensamble (BOM)
             </h4>
-            <div style={{ overflowY: 'auto', maxHeight: '550px' }}>
+            <div style={{ overflowY: 'auto', maxHeight: '570px' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ background: '#f8f9fa', textAlign: 'left', borderBottom: '2px solid #dee2e6', fontSize: '12px' }}>
@@ -451,15 +410,15 @@ export default function GestionIngenieria({ disenos = [], proyectosUnicos = [], 
             </div>
           </div>
 
-          <div style={{ background: '#ffffff', padding: '15px', borderRadius: '8px', border: '1px solid #e0e0e0', boxSizing: 'border-box', height: '620px', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ background: '#ffffff', padding: '15px', borderRadius: '8px', border: '1px solid #e0e0e0', boxSizing: 'border-box', height: '640px', display: 'flex', flexDirection: 'column' }}>
             <h4 style={{ marginTop: 0, marginBottom: '12px', borderBottom: '1px solid #eee', paddingBottom: '8px', color: '#333' }}>
               🧊 Visor de Modelo 3D
             </h4>
-            <div style={{ width: '100%', height: '550px', position: 'relative' }}>
+            <div style={{ width: '100%', height: '570px', position: 'relative' }}>
               {modeloSeleccionado ? (
                 <GlbViewer key={modeloSeleccionado} modelUrl={modeloSeleccionado} />
               ) : (
-                <div style={{ height: '550px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fafafa', border: '2px dashed #ddd', borderRadius: '8px', color: '#888', textAlign: 'center' }}>
+                <div style={{ height: '570px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fafafa', border: '2px dashed #ddd', borderRadius: '8px', color: '#888', textAlign: 'center' }}>
                   <div>
                     <p style={{ fontSize: '15px', margin: '0 0 8px 0', fontWeight: 'bold' }}>📦 Inspección 3D</p>
                     <p style={{ fontSize: '13px', color: '#aaa', margin: 0 }}>Haz clic en "👁️ 3D" en cualquier pieza de la izquierda para cargarla.</p>
@@ -468,15 +427,12 @@ export default function GestionIngenieria({ disenos = [], proyectosUnicos = [], 
               )}
             </div>
           </div>
-
         </div>
       )}
 
       {/* PESTAÑA 2: CONTROL DE AVANCE */}
-      {subPestana === 'avance' && (
+      {subVista === 'avance' && (
         <div style={{ background: '#ffffff', padding: '20px', borderRadius: '8px', border: '1px solid #e0e0e0', width: '100%', boxSizing: 'border-box' }}>
-          
-          {/* Tarjeta de Resumen General */}
           <div style={{ background: '#f8f9fa', padding: '15px 20px', borderRadius: '8px', border: '1px solid #dee2e6', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
             <div>
               <h3 style={{ margin: 0, color: '#17a2b8' }}>📊 Avance General de Ensambles Completos</h3>
@@ -520,21 +476,17 @@ export default function GestionIngenieria({ disenos = [], proyectosUnicos = [], 
               </tbody>
             </table>
           </div>
-          <p style={{ fontSize: '12px', color: '#888', marginTop: '12px', fontStyle: 'italic' }}>
-            💡 Nota: La "Cant. Lista" en Sub-ensambles y Ensambles calcula automáticamente cuántos conjuntos completos se pueden armar con las piezas disponibles.
-          </p>
         </div>
       )}
 
-      {/* PESTAÑA 3: FORMULARIO DE CAPTURA */}
-      {subPestana === 'nuevo' && (
+      {/* PESTAÑA 3: FORMULARIO DE REGISTRO */}
+      {subVista === 'nuevo' && (
         <div style={{ background: '#ffffff', padding: '25px', borderRadius: '8px', border: '1px solid #e0e0e0', maxWidth: '800px', margin: '0 auto', width: '100%' }}>
           <h3 style={{ marginTop: 0, color: '#333', borderBottom: '2px solid #28a745', paddingBottom: '10px' }}>
             ➕ Registrar Nuevo Componente / Pieza
           </h3>
           
           <form onSubmit={manejarEnvio} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '18px', marginTop: '15px' }}>
-            
             <div style={{ gridColumn: '1 / -1' }}>
               <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px', fontSize: '13px' }}>Proyecto:*</label>
               <select value={proyectoForm} onChange={(e) => { setProyectoForm(e.target.value); setPadreID(''); }} required style={{ width: '100%', padding: '9px', borderRadius: '4px', border: '1px solid #ccc' }}>
@@ -602,7 +554,7 @@ export default function GestionIngenieria({ disenos = [], proyectosUnicos = [], 
               <button type="submit" disabled={guardando} style={{ backgroundColor: '#28a745', color: '#fff', border: 'none', padding: '12px 24px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', flex: 1 }}>
                 {guardando ? '⌛ Guardando y Subiendo Archivos...' : '💾 Guardar Elemento'}
               </button>
-              <button type="button" onClick={() => setSubPestana('explorador')} style={{ backgroundColor: '#6c757d', color: '#fff', border: 'none', padding: '12px 20px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>
+              <button type="button" onClick={() => setPestanaIngenieria('explorador')} style={{ backgroundColor: '#6c757d', color: '#fff', border: 'none', padding: '12px 20px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>
                 Cancelar
               </button>
             </div>

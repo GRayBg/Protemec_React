@@ -13,14 +13,12 @@ import {
 dotenv.config()
 
 const app = express()
-
 app.use(express.json())
 app.use(cors({ origin: '*', methods: ['GET', 'POST', 'PUT', 'DELETE'], allowedHeaders: ['Content-Type', 'Authorization'] }))
 
 const storage = multer.memoryStorage()
 const upload = multer({ storage, limits: { fileSize: 200 * 1024 * 1024 } })
 
-// Middleware para recibir el GLB y PDF en la sección de Ingeniería
 const uploadIngenieria = upload.fields([
   { name: 'archivoGlb', maxCount: 1 },
   { name: 'archivoPdf', maxCount: 1 }
@@ -38,46 +36,33 @@ async function subirABlobYObtenerSAS(file) {
   if (!file) return null
   const connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING
   const containerName = process.env.AZURE_CONTAINER_NAME
-  if (!connectionString || !containerName) throw new Error("Faltan variables de Azure Blob Storage.")
+  const blobServiceClient = BlobServiceClient.fromConnectionString(connectionString)
+  const containerClient = blobServiceClient.getContainerClient(containerName)
+  const blobName = `archivo_${Date.now()}_${file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '_')}`
+  const blockBlobClient = containerClient.getBlockBlobClient(blobName)
+  await blockBlobClient.uploadData(file.buffer, { blobHTTPHeaders: { blobContentType: file.mimetype } })
 
-  try {
-    const blobServiceClient = BlobServiceClient.fromConnectionString(connectionString)
-    const containerClient = blobServiceClient.getContainerClient(containerName)
-    const nombreLimpio = file.originalname.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9.\-_]/g, '_')
-    const blobName = `archivo_${Date.now()}_${nombreLimpio}`
-    const blockBlobClient = containerClient.getBlockBlobClient(blobName)
+  const accountName = blobServiceClient.accountName
+  const matchKey = connectionString.match(/AccountKey=([^;]+)/)
+  const accountKey = matchKey ? matchKey[1].replace(/["']/g, '').trim() : ''
+  const sharedKeyCredential = new StorageSharedKeyCredential(accountName, accountKey)
 
-    await blockBlobClient.uploadData(file.buffer, { blobHTTPHeaders: { blobContentType: file.mimetype || 'application/octet-stream' } })
+  const sasToken = generateBlobSASQueryParameters({
+    containerName, blobName,
+    permissions: BlobSASPermissions.parse("r"),
+    startsOn: new Date(),
+    expiresOn: new Date(new Date().valueOf() + 100 * 365 * 24 * 60 * 60 * 1000)
+  }, sharedKeyCredential).toString()
 
-    const accountName = blobServiceClient.accountName
-    const matchKey = connectionString.match(/AccountKey=([^;]+)/)
-    const accountKey = matchKey ? matchKey[1].replace(/["']/g, '').trim() : ''
-    const sharedKeyCredential = new StorageSharedKeyCredential(accountName, accountKey)
-
-    const sasToken = generateBlobSASQueryParameters({
-      containerName, blobName,
-      permissions: BlobSASPermissions.parse("r"),
-      startsOn: new Date(),
-      expiresOn: new Date(new Date().valueOf() + 100 * 365 * 24 * 60 * 60 * 1000)
-    }, sharedKeyCredential).toString()
-
-    return `${blockBlobClient.url}?${sasToken}`
-  } catch (err) {
-    throw new Error(`Error Blob Storage: ${err.message}`)
-  }
+  return `${blockBlobClient.url}?${sasToken}`
 }
 
 // -------------------------------------------------------------
 // 1. CLIENTES
 // -------------------------------------------------------------
 app.get('/api/clientes', async (req, res) => {
-  try {
-    let pool = await sql.connect(config)
-    let resultado = await pool.request().query('SELECT ClienteID, NombreCliente, RFC_TaxID, FechaCreacion FROM Clientes ORDER BY NombreCliente ASC')
-    res.json(resultado.recordset)
-  } catch (error) {
-    res.status(500).send(error.message)
-  }
+  try { let pool = await sql.connect(config); let r = await pool.request().query('SELECT * FROM Clientes ORDER BY NombreCliente ASC'); res.json(r.recordset) } 
+  catch (e) { res.status(500).send(e.message) }
 })
 
 app.post('/api/clientes', async (req, res) => {
@@ -89,30 +74,15 @@ app.post('/api/clientes', async (req, res) => {
       .input('RFC', sql.NVarChar, rfc || null)
       .query('INSERT INTO Clientes (NombreCliente, RFC_TaxID) VALUES (@NombreCliente, @RFC)')
     res.json({ mensaje: 'Cliente registrado correctamente' })
-  } catch (error) {
-    res.status(500).send(error.message)
-  }
+  } catch (e) { res.status(500).send(e.message) }
 })
 
 // -------------------------------------------------------------
-// 2. CONTACTOS CLIENTES
+// 2. CONTACTOS
 // -------------------------------------------------------------
 app.get('/api/contactos', async (req, res) => {
-  try {
-    let pool = await sql.connect(config)
-    let query = `
-      SELECT ct.ContactoID, ct.NombreContacto, ct.Puesto, ct.Telefono, ct.Email, 
-             ct.ClienteID, c.NombreCliente, ct.UbicacionID, u.NombreUbicacion
-      FROM ContactosClientes ct
-      INNER JOIN Clientes c ON ct.ClienteID = c.ClienteID
-      INNER JOIN Ubicaciones u ON ct.UbicacionID = u.UbicacionID
-      ORDER BY c.NombreCliente, ct.NombreContacto ASC
-    `
-    let resultado = await pool.request().query(query)
-    res.json(resultado.recordset)
-  } catch (error) {
-    res.status(500).send(error.message)
-  }
+  try { let pool = await sql.connect(config); let r = await pool.request().query('SELECT ct.*, c.NombreCliente FROM ContactosClientes ct JOIN Clientes c ON ct.ClienteID = c.ClienteID'); res.json(r.recordset) } 
+  catch (e) { res.status(500).send(e.message) }
 })
 
 app.post('/api/contactos', async (req, res) => {
@@ -128,28 +98,15 @@ app.post('/api/contactos', async (req, res) => {
       .input('Email', sql.NVarChar, email || null)
       .query('INSERT INTO ContactosClientes (ClienteID, UbicacionID, NombreContacto, Puesto, Telefono, Email) VALUES (@ClienteID, @UbicacionID, @NombreContacto, @Puesto, @Telefono, @Email)')
     res.json({ mensaje: 'Contacto registrado correctamente' })
-  } catch (error) {
-    res.status(500).send(error.message)
-  }
+  } catch (e) { res.status(500).send(e.message) }
 })
 
 // -------------------------------------------------------------
 // 3. UBICACIONES
 // -------------------------------------------------------------
 app.get('/api/ubicaciones', async (req, res) => {
-  try {
-    let pool = await sql.connect(config)
-    let query = `
-      SELECT u.UbicacionID, u.NombreUbicacion, u.Direccion, u.Ciudad, u.ClienteID, c.NombreCliente
-      FROM Ubicaciones u
-      INNER JOIN Clientes c ON u.ClienteID = c.ClienteID
-      ORDER BY c.NombreCliente, u.NombreUbicacion ASC
-    `
-    let resultado = await pool.request().query(query)
-    res.json(resultado.recordset)
-  } catch (error) {
-    res.status(500).send(error.message)
-  }
+  try { let pool = await sql.connect(config); let r = await pool.request().query('SELECT * FROM Ubicaciones'); res.json(r.recordset) } 
+  catch (e) { res.status(500).send(e.message) }
 })
 
 app.post('/api/ubicaciones', async (req, res) => {
@@ -163,29 +120,15 @@ app.post('/api/ubicaciones', async (req, res) => {
       .input('Ciudad', sql.NVarChar, ciudad || null)
       .query('INSERT INTO Ubicaciones (ClienteID, NombreUbicacion, Direccion, Ciudad) VALUES (@ClienteID, @NombreUbicacion, @Direccion, @Ciudad)')
     res.json({ mensaje: 'Ubicación registrada correctamente' })
-  } catch (error) {
-    res.status(500).send(error.message)
-  }
+  } catch (e) { res.status(500).send(e.message) }
 })
 
 // -------------------------------------------------------------
 // 4. PROYECTOS
 // -------------------------------------------------------------
 app.get('/api/proyectos', async (req, res) => {
-  try {
-    let pool = await sql.connect(config)
-    let query = `
-      SELECT p.ProyectoID, p.NombreProyecto, p.Estatus, p.UbicacionID, u.NombreUbicacion, c.ClienteID, c.NombreCliente
-      FROM Proyectos p
-      INNER JOIN Ubicaciones u ON p.UbicacionID = u.UbicacionID
-      INNER JOIN Clientes c ON u.ClienteID = c.ClienteID
-      ORDER BY p.NombreProyecto ASC
-    `
-    let resultado = await pool.request().query(query)
-    res.json(resultado.recordset)
-  } catch (error) {
-    res.status(500).send(error.message)
-  }
+  try { let pool = await sql.connect(config); let r = await pool.request().query('SELECT * FROM Proyectos'); res.json(r.recordset) } 
+  catch (e) { res.status(500).send(e.message) }
 })
 
 app.post('/api/proyectos', async (req, res) => {
@@ -198,33 +141,24 @@ app.post('/api/proyectos', async (req, res) => {
       .input('Descripcion', sql.NVarChar, descripcion || null)
       .query('INSERT INTO Proyectos (NombreProyecto, UbicacionID, Descripcion) VALUES (@NombreProyecto, @UbicacionID, @Descripcion)')
     res.json({ mensaje: 'Proyecto registrado correctamente' })
-  } catch (error) {
-    res.status(500).send(error.message)
-  }
+  } catch (e) { res.status(500).send(e.message) }
 })
 
 // -------------------------------------------------------------
 // 5. COMPRAS
 // -------------------------------------------------------------
 app.get('/api/datos', async (req, res) => {
-  try {
-    let pool = await sql.connect(config)
-    let resultado = await pool.request().query('SELECT * FROM Compras ORDER BY FechaCreacion DESC')
-    res.json(resultado.recordset)
-  } catch (error) {
-    res.status(500).send(error.message)
-  }
+  try { let pool = await sql.connect(config); let r = await pool.request().query('SELECT * FROM Compras ORDER BY FechaCreacion DESC'); res.json(r.recordset) } 
+  catch (e) { res.status(500).send(e.message) }
 })
 
 app.post('/api/compras', upload.single('archivo'), async (req, res) => {
   const { proveedor, costo, categoria, producto, proyecto, precioUnitario, cantidad, fechaCompra, fecha, urlSaaS, estatus } = req.body
   const valorFechaFinal = fechaCompra || fecha
-  const file = req.file
+  let finalUrl = (urlSaaS && urlSaaS !== 'null' && urlSaaS !== 'undefined') ? urlSaaS : null
+  if (req.file) finalUrl = await subirABlobYObtenerSAS(req.file)
 
   try {
-    let finalUrlSaaS = (urlSaaS && urlSaaS !== 'null' && urlSaaS !== 'undefined') ? urlSaaS : null
-    if (file) finalUrlSaaS = await subirABlobYObtenerSAS(file)
-
     let pool = await sql.connect(config)
     let request = pool.request()
       .input('Proveedor', sql.NVarChar, proveedor || '')
@@ -234,36 +168,32 @@ app.post('/api/compras', upload.single('archivo'), async (req, res) => {
       .input('Proyecto', sql.NVarChar, proyecto || null)
       .input('PrecioUnitario', sql.Decimal(10, 2), parseFloat(precioUnitario) || 0)
       .input('Cantidad', sql.Int, parseInt(cantidad, 10) || 0)
-      .input('URL_SaaS', sql.NVarChar, finalUrlSaaS)
+      .input('URL_SaaS', sql.NVarChar, finalUrl)
       .input('Estatus', sql.NVarChar, estatus || 'Comprado')
 
     const fechaValida = (valorFechaFinal && String(valorFechaFinal).trim() !== '' && String(valorFechaFinal) !== 'null') ? valorFechaFinal : null
     request.input('FechaCompra', sql.Date, fechaValida)
 
     await request.query(`
-      INSERT INTO Compras (Proveedor, Costo, Categoria, Producto, Proyecto, PrecioUnitario, Cantidad, URL_SaaS, FechaCompra, Estatus, FechaCreacion) 
-      VALUES (@Proveedor, @Costo, @Categoria, @Producto, @Proyecto, @PrecioUnitario, @Cantidad, @URL_SaaS, @FechaCompra, @Estatus, CAST(GETDATE() AS DATE))
+      INSERT INTO Compras (Proveedor, Costo, Categoria, Producto, Proyecto, PrecioUnitario, Cantidad, URL_SaaS, FechaCompra, Estatus, EstatusAlmacen, FechaCreacion) 
+      VALUES (@Proveedor, @Costo, @Categoria, @Producto, @Proyecto, @PrecioUnitario, @Cantidad, @URL_SaaS, @FechaCompra, @Estatus, 'Pendiente', CAST(GETDATE() AS DATE))
     `)
 
-    res.json({ mensaje: 'Registro guardado exitosamente', urlSaaS: finalUrlSaaS })
-  } catch (error) {
-    res.status(500).send(error.message)
-  }
+    res.json({ mensaje: 'Registro guardado exitosamente', urlSaaS: finalUrl })
+  } catch (e) { res.status(500).send(e.message) }
 })
 
 app.put('/api/compras/:id', upload.single('archivo'), async (req, res) => {
   const { id } = req.params
   const { proveedor, costo, categoria, producto, proyecto, precioUnitario, cantidad, fechaCompra, fecha, urlSaaS, estatus } = req.body
   const valorFechaFinal = fechaCompra || fecha
-  const file = req.file
+  let finalUrl = (urlSaaS && urlSaaS !== 'null' && urlSaaS !== 'undefined') ? urlSaaS : null
+  if (req.file) finalUrl = await subirABlobYObtenerSAS(req.file)
 
   const idNumero = parseInt(id, 10)
   if (isNaN(idNumero)) return res.status(400).send('ID inválido.')
 
   try {
-    let finalUrlSaaS = (urlSaaS && urlSaaS !== 'null' && urlSaaS !== 'undefined') ? urlSaaS : null
-    if (file) finalUrlSaaS = await subirABlobYObtenerSAS(file)
-
     let pool = await sql.connect(config)
     let request = pool.request()
       .input('ID', sql.Int, idNumero)
@@ -274,7 +204,7 @@ app.put('/api/compras/:id', upload.single('archivo'), async (req, res) => {
       .input('Proyecto', sql.NVarChar, proyecto || null)
       .input('PrecioUnitario', sql.Decimal(10, 2), parseFloat(precioUnitario) || 0)
       .input('Cantidad', sql.Int, parseInt(cantidad, 10) || 0)
-      .input('URL_SaaS', sql.NVarChar, finalUrlSaaS)
+      .input('URL_SaaS', sql.NVarChar, finalUrl)
       .input('Estatus', sql.NVarChar, estatus || 'Comprado')
 
     const fechaValida = (valorFechaFinal && String(valorFechaFinal).trim() !== '' && String(valorFechaFinal) !== 'null') ? valorFechaFinal : null
@@ -295,100 +225,85 @@ app.put('/api/compras/:id', upload.single('archivo'), async (req, res) => {
       WHERE Numero = @ID
     `)
 
-    res.json({ mensaje: 'Registro actualizado exitosamente', urlSaaS: finalUrlSaaS })
-  } catch (error) {
-    res.status(500).send(error.message)
-  }
+    res.json({ mensaje: 'Registro actualizado exitosamente', urlSaaS: finalUrl })
+  } catch (e) { res.status(500).send(e.message) }
 })
 
 // -------------------------------------------------------------
-// 6. INGENIERÍA Y DISEÑO (Estructura BOM + Seguimiento de Avance)
+// 6. INGENIERÍA
 // -------------------------------------------------------------
 app.get('/api/ingenieria', async (req, res) => {
-  try {
-    let pool = await sql.connect(config)
-    let resultado = await pool.request().query('SELECT * FROM Ingenieria ORDER BY FechaCreacion DESC')
-    res.json(resultado.recordset)
-  } catch (error) {
-    res.status(500).send(error.message)
-  }
+  try { let pool = await sql.connect(config); let r = await pool.request().query('SELECT * FROM Ingenieria ORDER BY FechaCreacion DESC'); res.json(r.recordset) } 
+  catch (e) { res.status(500).send(e.message) }
 })
 
 app.post('/api/ingenieria', uploadIngenieria, async (req, res) => {
-  const { nombre, proyecto, tipoNivel, padreID, cantidadRequerida } = req.body
-  const fileGlb = req.files && req.files['archivoGlb'] ? req.files['archivoGlb'][0] : null
-  const filePdf = req.files && req.files['archivoPdf'] ? req.files['archivoPdf'][0] : null
-
+  const { nombre, proyecto, cantidadRequerida } = req.body
+  let urlGLB = req.files?.archivoGlb ? await subirABlobYObtenerSAS(req.files.archivoGlb[0]) : null
   try {
-    let urlGLB = null
-    let urlPDF = null
-
-    if (fileGlb) urlGLB = await subirABlobYObtenerSAS(fileGlb)
-    if (filePdf) urlPDF = await subirABlobYObtenerSAS(filePdf)
-
     let pool = await sql.connect(config)
     await pool.request()
-      .input('Nombre', sql.NVarChar, nombre || '')
-      .input('Proyecto', sql.NVarChar, proyecto || '')
-      .input('TipoNivel', sql.NVarChar, tipoNivel || 'Ensamble')
-      .input('PadreID', sql.Int, padreID && padreID !== 'null' && padreID !== '' ? parseInt(padreID, 10) : null)
-      .input('CantidadRequerida', sql.Int, parseInt(cantidadRequerida, 10) || 1)
-      .input('CantidadLista', sql.Int, 0)
-      .input('EstatusAvance', sql.NVarChar, 'Pendiente')
-      .input('UrlGLB', sql.NVarChar, urlGLB)
-      .input('UrlPDF', sql.NVarChar, urlPDF)
-      .query(`
-        INSERT INTO Ingenieria (Nombre, Proyecto, TipoNivel, PadreID, CantidadRequerida, CantidadLista, EstatusAvance, UrlGLB, UrlPDF, FechaCreacion)
-        VALUES (@Nombre, @Proyecto, @TipoNivel, @PadreID, @CantidadRequerida, @CantidadLista, @EstatusAvance, @UrlGLB, @UrlPDF, GETDATE())
-      `)
-
-    res.json({ mensaje: 'Registro de ingeniería guardado correctamente', urlGLB, urlPDF })
-  } catch (error) {
-    res.status(500).send(error.message)
-  }
+      .input('N', nombre).input('P', proyecto).input('CR', cantidadRequerida).input('GLB', urlGLB)
+      .query('INSERT INTO Ingenieria (Nombre, Proyecto, CantidadRequerida, UrlGLB, EstatusAvance, FechaCreacion) VALUES (@N, @P, @CR, @GLB, \'Pendiente\', GETDATE())')
+    res.json({ mensaje: 'Guardado' })
+  } catch (e) { res.status(500).send(e.message) }
 })
 
-// PUT: Actualizar la cantidad lista y cantidad requerida (recalculando estatus)
-app.put('/api/ingenieria/:id/avance', async (req, res) => {
-  const { id } = req.params
-  const { cantidadLista, cantidadRequerida } = req.body
+// -------------------------------------------------------------
+// 7. ALMACÉN E INVENTARIO
+// -------------------------------------------------------------
+app.get('/api/inventario', async (req, res) => {
+  try { let pool = await sql.connect(config); let r = await pool.request().query('SELECT * FROM InventarioAlmacen ORDER BY ID DESC'); res.json(r.recordset) } 
+  catch (e) { res.status(500).send(e.message) }
+})
 
-  const idNumero = parseInt(id, 10)
-  if (isNaN(idNumero)) {
-    return res.status(400).send('ID de pieza inválido.')
-  }
-
-  const cantLista = parseInt(cantidadLista, 10) || 0
-  const cantReq = parseInt(cantidadRequerida, 10) || 1
-
-  let estatus = 'Pendiente'
-  if (cantLista >= cantReq) {
-    estatus = 'Completado'
-  } else if (cantLista > 0) {
-    estatus = 'En Proceso'
-  }
-
+app.post('/api/inventario/ingresar', async (req, res) => {
+  const { compraID, modo, inventarioIDExistente, nombreProducto, ubicacion3D, cantidad } = req.body
   try {
     let pool = await sql.connect(config)
-    await pool.request()
-      .input('ID', sql.Int, idNumero)
-      .input('CantidadLista', sql.Int, cantLista)
-      .input('CantidadRequerida', sql.Int, cantReq)
-      .input('EstatusAvance', sql.NVarChar, estatus)
-      .query(`
-        UPDATE Ingenieria 
-        SET CantidadLista = @CantidadLista,
-            CantidadRequerida = @CantidadRequerida,
-            EstatusAvance = @EstatusAvance
-        WHERE ID = @ID
-      `)
+    let tx = new sql.Transaction(pool)
+    await tx.begin()
+    try {
+      let targetID = inventarioIDExistente
+      if (modo === 'nuevo' || !targetID) {
+        let r = await tx.request()
+          .input('N', nombreProducto).input('U', ubicacion3D).input('S', cantidad)
+          .query('INSERT INTO InventarioAlmacen (NombreProducto, Ubicacion3D, Estado, CantidadStock) OUTPUT INSERTED.ID VALUES (@N, @U, \'Almacenado\', @S)')
+        targetID = r.recordset[0].ID
+      } else {
+        await tx.request().input('ID', targetID).input('S', cantidad).input('U', ubicacion3D)
+          .query('UPDATE InventarioAlmacen SET CantidadStock = CantidadStock + @S, Ubicacion3D = @U WHERE ID = @ID')
+      }
+      
+      if (compraID) {
+        await tx.request().input('CID', compraID).input('IID', targetID).input('C', cantidad)
+          .query('INSERT INTO DetalleRecepcionCompras (CompraID, InventarioID, CantidadRecibida) VALUES (@CID, @IID, @C)')
+        
+        await tx.request().input('ID', compraID)
+          .query("UPDATE Compras SET EstatusAlmacen = 'Recibido en Almacén' WHERE Numero = @ID")
+      }
+      
+      await tx.commit()
+      res.json({ success: true })
+    } catch (err) { await tx.rollback(); throw err }
+  } catch (e) { res.status(500).send(e.message) }
+})
 
-    res.json({ mensaje: 'Avance y requerimiento actualizados correctamente', estatus })
-  } catch (error) {
-    console.error('Error al actualizar avance:', error)
-    res.status(500).send(`Error DB: ${error.message}`)
-  }
+app.put('/api/inventario/:id', async (req, res) => {
+  const { id } = req.params
+  const { estado, cantidadStock, ubicacion3D } = req.body
+  try {
+    let pool = await sql.connect(config)
+    let reqSql = pool.request().input('ID', parseInt(id))
+    let sets = []
+    if (estado) { reqSql.input('E', estado); sets.push('Estado = @E') }
+    if (cantidadStock !== undefined) { reqSql.input('S', cantidadStock); sets.push('CantidadStock = @S') }
+    if (ubicacion3D) { reqSql.input('U', ubicacion3D); sets.push('Ubicacion3D = @U') }
+    
+    await reqSql.query(`UPDATE InventarioAlmacen SET ${sets.join(', ')} WHERE ID = @ID`)
+    res.json({ success: true })
+  } catch (e) { res.status(500).send(e.message) }
 })
 
 const PORT = process.env.PORT || 3000
-app.listen(PORT, () => { console.log(`🚀 Servidor corriendo en puerto ${PORT}`) })
+app.listen(PORT, () => { console.log(`🚀 Servidor en puerto ${PORT}`) })
