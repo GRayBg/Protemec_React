@@ -153,80 +153,288 @@ export default function App() {
 
   return (
     <div style={estilos.layout}>
+      {/* BARRA LATERAL */}
       <div style={estilos.sidebar(menuAbierto)}>
         <div>
-          <button onClick={() => setMenuAbierto(!menuAbierto)} style={estilos.btnHamburguesa(hoverHamburguesa)} onMouseEnter={() => setHoverHamburguesa(true)} onMouseLeave={() => setHoverHamburguesa(false)}>☰</button>
+          <button 
+            onClick={() => setMenuAbierto(!menuAbierto)} 
+            onMouseEnter={() => setHoverHamburguesa(true)}
+            onMouseLeave={() => setHoverHamburguesa(false)}
+            style={estilos.btnHamburguesa(hoverHamburguesa)} 
+            title="Expandir/Contraer Menú"
+          >
+            ☰
+          </button>
+          
           <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
             
-            <div style={{ position: 'relative' }} onMouseEnter={() => setHoverModulo('compras')} onMouseLeave={() => { setHoverModulo(null); setHoverSubmenuItem(null); }}>
-              <div onClick={() => { setModuloPrincipal('compras'); setPestanaCompras('consulta'); cancelarEdicion(); }} style={estilos.itemMenu(hoverModulo === 'compras')}>
-                <span style={estilos.iconoMenu}>🛒</span>{menuAbierto && <span>Compras</span>}
+            {/* COMPRAS */}
+            <div 
+              style={{ position: 'relative' }}
+              onMouseEnter={() => setHoverModulo('compras')}
+              onMouseLeave={() => { setHoverModulo(null); setHoverSubmenuItem(null); }}
+            >
+              <div 
+                onClick={() => { setModuloPrincipal('compras'); setPestanaCompras('consulta'); cancelarEdicion(); }} 
+                style={estilos.itemMenu(hoverModulo === 'compras')}
+                title="Módulo de Compras"
+              >
+                <span style={estilos.iconoMenu}>🛒</span>
+                {menuAbierto && <span>Compras</span>}
               </div>
+
               {hoverModulo === 'compras' && (
                 <div style={estilos.submenuFlotante}>
                   <div style={estilos.submenuTitulo}>Módulo de Compras</div>
-                  <div onClick={() => { setModuloPrincipal('compras'); setPestanaCompras('consulta'); setHoverModulo(null); }} style={estilos.itemSubmenu()}>🔍 Consulta Compras</div>
-                  <div onClick={() => { setModuloPrincipal('compras'); setPestanaCompras('captura'); setHoverModulo(null); }} style={estilos.itemSubmenu()}>➕ Captura Compra / Cotización</div>
-                  <div onClick={() => { setModuloPrincipal('compras'); setPestanaCompras('clientes'); setHoverModulo(null); }} style={estilos.itemSubmenu()}>🏢 Clientes & Contactos</div>
+                  <div onMouseEnter={() => setHoverSubmenuItem('c-1')} onMouseLeave={() => setHoverSubmenuItem(null)} onClick={() => { setModuloPrincipal('compras'); setPestanaCompras('consulta'); setHoverModulo(null); }} style={estilos.itemSubmenu(hoverSubmenuItem === 'c-1')}>🔍 Consulta Compras</div>
+                  <div onMouseEnter={() => setHoverSubmenuItem('c-2')} onMouseLeave={() => setHoverSubmenuItem(null)} onClick={() => { setModuloPrincipal('compras'); setPestanaCompras('captura'); if (!idEditando) cancelarEdicion(); setHoverModulo(null); }} style={estilos.itemSubmenu(hoverSubmenuItem === 'c-2')}>{idEditando ? `✏️ Editando #${idEditando}` : '➕ Captura Compra / Cotización'}</div>
+                  <div onMouseEnter={() => setHoverSubmenuItem('c-3')} onMouseLeave={() => setHoverSubmenuItem(null)} onClick={() => { setModuloPrincipal('compras'); setPestanaCompras('clientes'); setHoverModulo(null); }} style={estilos.itemSubmenu(hoverSubmenuItem === 'c-3')}>🏢 Clientes & Contactos</div>
+                  <div onMouseEnter={() => setHoverSubmenuItem('c-4')} onMouseLeave={() => setHoverSubmenuItem(null)} onClick={() => { setModuloPrincipal('compras'); setPestanaCompras('ubicaciones'); setHoverModulo(null); }} style={estilos.itemSubmenu(hoverSubmenuItem === 'c-4')}>📍 Ubicaciones</div>
+                  <div onMouseEnter={() => setHoverSubmenuItem('c-5')} onMouseLeave={() => setHoverSubmenuItem(null)} onClick={() => { setModuloPrincipal('compras'); setPestanaCompras('proyectos'); setHoverModulo(null); }} style={estilos.itemSubmenu(hoverSubmenuItem === 'c-5')}>📁 Proyectos</div>
                 </div>
               )}
             </div>
             
-            <div style={{ position: 'relative' }} onMouseEnter={() => setHoverModulo('ingenieria')} onMouseLeave={() => { setHoverModulo(null); setHoverSubmenuItem(null); }}>
-              <div onClick={() => { setModuloPrincipal('ingenieria'); setPestanaIngenieria('explorador'); }} style={estilos.itemMenu(hoverModulo === 'ingenieria')}>
-                <span style={estilos.iconoMenu}>🛠️</span>{menuAbierto && <span>Ingeniería</span>}
+            {/* INGENIERÍA */}
+            <div 
+              style={{ position: 'relative' }}
+              onMouseEnter={() => setHoverModulo('ingenieria')}
+              onMouseLeave={() => { setHoverModulo(null); setHoverSubmenuItem(null); }}
+            >
+              <div 
+                onClick={() => { setModuloPrincipal('ingenieria'); setPestanaIngenieria('explorador'); }} 
+                style={estilos.itemMenu(hoverModulo === 'ingenieria')}
+                title="Módulo de Ingeniería"
+              >
+                <span style={estilos.iconoMenu}>🛠️</span>
+                {menuAbierto && <span>Ingeniería</span>}
               </div>
-            </div>
 
-            <div style={{ position: 'relative' }} onMouseEnter={() => setHoverModulo('almacen')} onMouseLeave={() => { setHoverModulo(null); setHoverSubmenuItem(null); }}>
-              <div onClick={() => { setModuloPrincipal('almacen'); setPestanaAlmacen('inventario'); }} style={estilos.itemMenu(hoverModulo === 'almacen')}>
-                <span style={estilos.iconoMenu}>📦</span>{menuAbierto && <span>Almacén</span>}
-              </div>
-              {hoverModulo === 'almacen' && (
+              {hoverModulo === 'ingenieria' && (
                 <div style={estilos.submenuFlotante}>
-                  <div style={estilos.submenuTitulo}>Control de Almacén</div>
-                  <div onClick={() => { setModuloPrincipal('almacen'); setPestanaAlmacen('inventario'); setHoverModulo(null); }} style={estilos.itemSubmenu()}>📊 Inventario General (3D)</div>
-                  <div onClick={() => { setModuloPrincipal('almacen'); setPestanaAlmacen('entradas'); setHoverModulo(null); }} style={estilos.itemSubmenu()}>📥 Entradas / Salidas</div>
+                  <div style={estilos.submenuTitulo}>Módulo de Ingeniería</div>
+                  <div onMouseEnter={() => setHoverSubmenuItem('i-1')} onMouseLeave={() => setHoverSubmenuItem(null)} onClick={() => { setModuloPrincipal('ingenieria'); setPestanaIngenieria('explorador'); setHoverModulo(null); }} style={estilos.itemSubmenu(hoverSubmenuItem === 'i-1')}>🔍 Explorador BOM & Visor 3D</div>
+                  <div onMouseEnter={() => setHoverSubmenuItem('i-2')} onMouseLeave={() => setHoverSubmenuItem(null)} onClick={() => { setModuloPrincipal('ingenieria'); setPestanaIngenieria('avance'); setHoverModulo(null); }} style={estilos.itemSubmenu(hoverSubmenuItem === 'i-2')}>📊 Control de Avance de Fabricación</div>
+                  <div onMouseEnter={() => setHoverSubmenuItem('i-3')} onMouseLeave={() => setHoverSubmenuItem(null)} onClick={() => { setModuloPrincipal('ingenieria'); setPestanaIngenieria('nuevo'); setHoverModulo(null); }} style={estilos.itemSubmenu(hoverSubmenuItem === 'i-3')}>➕ Registrar Nueva Pieza / Sub-ensamble</div>
                 </div>
               )}
             </div>
 
-            <div style={{ position: 'relative' }} onMouseEnter={() => setHoverModulo('chatbot')} onMouseLeave={() => setHoverModulo(null)}>
-              <div onClick={() => { setModuloPrincipal('chatbot'); }} style={estilos.itemMenu(hoverModulo === 'chatbot' || moduloPrincipal === 'chatbot')}>
-                <span style={estilos.iconoMenu}>🤖</span>{menuAbierto && <span>Chatbot IA</span>}
+            {/* ALMACÉN */}
+            <div 
+              style={{ position: 'relative' }}
+              onMouseEnter={() => setHoverModulo('almacen')}
+              onMouseLeave={() => { setHoverModulo(null); setHoverSubmenuItem(null); }}
+            >
+              <div 
+                onClick={() => { setModuloPrincipal('almacen'); setPestanaAlmacen('inventario'); }} 
+                style={estilos.itemMenu(hoverModulo === 'almacen')}
+                title="Módulo de Almacén"
+              >
+                <span style={estilos.iconoMenu}>📦</span>
+                {menuAbierto && <span>Almacén</span>}
+              </div>
+
+              {hoverModulo === 'almacen' && (
+                <div style={estilos.submenuFlotante}>
+                  <div style={estilos.submenuTitulo}>Control de Almacén</div>
+                  <div onMouseEnter={() => setHoverSubmenuItem('a-1')} onMouseLeave={() => setHoverSubmenuItem(null)} onClick={() => { setModuloPrincipal('almacen'); setPestanaAlmacen('inventario'); setHoverModulo(null); }} style={estilos.itemSubmenu(hoverSubmenuItem === 'a-1')}>📊 Inventario General (3D)</div>
+                  <div onMouseEnter={() => setHoverSubmenuItem('a-2')} onMouseLeave={() => setHoverSubmenuItem(null)} onClick={() => { setModuloPrincipal('almacen'); setPestanaAlmacen('entradas'); setHoverModulo(null); }} style={estilos.itemSubmenu(hoverSubmenuItem === 'a-2')}>📥 Entradas y Recepción</div>
+                </div>
+              )}
+            </div>
+
+            {/* CHATBOT */}
+            <div 
+              style={{ position: 'relative' }}
+              onMouseEnter={() => setHoverModulo('chatbot')}
+              onMouseLeave={() => setHoverModulo(null)}
+            >
+              <div 
+                onClick={() => { setModuloPrincipal('chatbot'); }} 
+                style={estilos.itemMenu(hoverModulo === 'chatbot' || moduloPrincipal === 'chatbot')}
+                title="Asistente Virtual (Chatbot)"
+              >
+                <span style={estilos.iconoMenu}>🤖</span>
+                {menuAbierto && <span>Chatbot IA</span>}
               </div>
             </div>
+
           </div>
         </div>
 
+        {/* CONFIGURACIÓN */}
         <div style={{ marginTop: 'auto', paddingBottom: '15px' }}>
-          <div onClick={() => setMostrarModalConfig(true)} onMouseEnter={() => setHoverConfig(true)} onMouseLeave={() => setHoverConfig(false)} style={estilos.itemMenu(hoverConfig)}>
-            <span style={estilos.iconoMenu}>⚙️</span>{menuAbierto && <span>Configuración</span>}
+          <div 
+            onClick={() => setMostrarModalConfig(true)}
+            onMouseEnter={() => setHoverConfig(true)}
+            onMouseLeave={() => setHoverConfig(false)}
+            style={estilos.itemMenu(hoverConfig)}
+            title="Configuración del Sistema"
+          >
+            <span style={estilos.iconoMenu}>⚙️</span>
+            {menuAbierto && <span>Configuración</span>}
           </div>
         </div>
       </div>
 
+      {/* CONTENIDO PRINCIPAL */}
       <div style={estilos.contenidoPrincipal(menuAbierto)}>
-        {moduloPrincipal === 'compras' && pestanaCompras === 'consulta' && <VistaConsulta compras={compras} iniciarEdicion={iniciarEdicion} proveedoresUnicos={proveedoresUnicos} categoriasUnicas={categoriasUnicas} proyectosUnicos={proyectosUnicos} />}
-        {moduloPrincipal === 'almacen' && pestanaAlmacen === 'inventario' && <GestionAlmacen3D API_URL={API_URL} />}
-        {moduloPrincipal === 'almacen' && pestanaAlmacen === 'entradas' && <GestionAlmacenInventario compras={compras} API_URL={API_URL} recargarDatos={cargarTodo} />}
-        {moduloPrincipal === 'chatbot' && <GestionChatbot />}
-        {/* ... (resto de tus módulos) */}
+        
+        {moduloPrincipal === 'compras' && (
+          <>
+            {pestanaCompras === 'consulta' && (
+              <VistaConsulta 
+                compras={compras} 
+                iniciarEdicion={iniciarEdicion} 
+                proveedoresUnicos={proveedoresUnicos} 
+                categoriasUnicas={categoriasUnicas} 
+                proyectosUnicos={proyectosUnicos} 
+              />
+            )}
+            {pestanaCompras === 'captura' && (
+              <FormularioCompra 
+                idEditando={idEditando} proveedor={proveedor} setProveedor={setProveedor}
+                costo={costo} setCosto={setCosto} categoria={categoria} setCategoria={setCategoria}
+                producto={producto} setProducto={setProducto} proyecto={proyecto} setProyecto={setProyecto}
+                precioUnitario={precioUnitario} setPrecioUnitario={setPrecioUnitario} cantidad={cantidad} setCantidad={setCantidad}
+                fechaCompra={fechaCompra} setFechaCompra={setFechaCompra} estatus={estatus} setEstatus={setEstatus}
+                setArchivoSeleccionado={setArchivoSeleccionado} guardando={guardando} manejarEnvio={manejarEnvio}
+                cancelarEdicion={() => { cancelarEdicion(); setPestanaCompras('consulta'); }}
+                proveedoresUnicos={proveedoresUnicos} categoriasUnicas={categoriasUnicas} productosUnicos={productosUnicos} proyectosUnicos={proyectosUnicos}
+              />
+            )}
+            {pestanaCompras === 'clientes' && <GestionClientes clientes={clientes} ubicaciones={ubicaciones} contactos={contactos} API_URL={API_URL} recargarDatos={cargarTodo} />}
+            {pestanaCompras === 'ubicaciones' && <GestionUbicaciones ubicaciones={ubicaciones} clientes={clientes} API_URL={API_URL} recargarDatos={cargarTodo} />}
+            {pestanaCompras === 'proyectos' && <GestionProyectos proyectos={proyectos} clientes={clientes} ubicaciones={ubicaciones} API_URL={API_URL} recargarDatos={cargarTodo} />}
+          </>
+        )}
+
+        {moduloPrincipal === 'ingenieria' && (
+          <GestionIngenieria 
+            disenos={disenos} 
+            proyectosUnicos={proyectosUnicos} 
+            API_URL={API_URL} 
+            recargarDatos={cargarTodo}
+            subVista={pestanaIngenieria}
+            setPestanaIngenieria={setPestanaIngenieria}
+          />
+        )}
+
+        {moduloPrincipal === 'almacen' && (
+          <>
+            {pestanaAlmacen === 'inventario' && <GestionAlmacen3D API_URL={API_URL} />}
+            {pestanaAlmacen === 'entradas' && <GestionAlmacenInventario compras={compras} API_URL={API_URL} recargarDatos={cargarTodo} />}
+          </>
+        )}
+
+        {moduloPrincipal === 'chatbot' && (
+          <GestionChatbot />
+        )}
       </div>
 
-      <ModalConfiguracion abierto={mostrarModalConfig} alCerrar={() => setMostrarModalConfig(false)} API_URL={API_URL} />
+      <ModalConfiguracion 
+        abierto={mostrarModalConfig} 
+        alCerrar={() => setMostrarModalConfig(false)} 
+        API_URL={API_URL} 
+      />
+
     </div>
   )
 }
 
 const estilos = {
-  layout: { display: 'flex', minHeight: '100vh', backgroundColor: '#ffffff' },
-  sidebar: (abierto) => ({ width: abierto ? '250px' : '65px', backgroundColor: '#1a252f', color: 'white', transition: 'width 0.3s ease', position: 'fixed', height: '100vh', zIndex: 1000 }),
-  btnHamburguesa: (enHover) => ({ background: enHover ? 'rgba(255, 255, 255, 0.1)' : 'none', border: 'none', color: 'white', fontSize: '24px', cursor: 'pointer', padding: '15px 20px', textAlign: 'left' }),
-  itemMenu: (enHover) => ({ padding: '15px 20px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '15px', backgroundColor: enHover ? '#007bff' : 'transparent', borderLeft: enHover ? '4px solid #66b0ff' : '4px solid transparent', transition: 'all 0.2s', whiteSpace: 'nowrap', fontSize: '16px' }),
-  iconoMenu: { fontSize: '20px', minWidth: '25px', textAlign: 'center' },
-  submenuFlotante: { position: 'absolute', left: '100%', top: 0, backgroundColor: '#243342', boxShadow: '0 8px 24px rgba(0,0,0,0.3)', borderRadius: '0 8px 8px 0', padding: '6px 0', minWidth: '290px', zIndex: 2000 },
-  submenuTitulo: { padding: '8px 16px', fontSize: '11px', fontWeight: 'bold', textTransform: 'uppercase', color: '#8da2b5', borderBottom: '1px solid rgba(255, 255, 255, 0.1)' },
-  itemSubmenu: (enHover) => ({ padding: '10px 16px', fontSize: '13px', cursor: 'pointer', color: '#cfd8dc', '&:hover': { backgroundColor: '#007bff', color: '#ffffff' } }),
-  contenidoPrincipal: (menuAbierto) => ({ marginLeft: menuAbierto ? '250px' : '65px', padding: '20px', width: menuAbierto ? 'calc(100% - 250px)' : 'calc(100% - 65px)', transition: 'margin-left 0.3s ease', boxSizing: 'border-box' })
+  layout: { 
+    display: 'flex', 
+    minHeight: '100vh', 
+    backgroundColor: '#ffffff' 
+  },
+  sidebar: (abierto) => ({
+    width: abierto ? '250px' : '65px',
+    backgroundColor: '#1a252f',
+    color: 'white',
+    transition: 'width 0.3s ease',
+    overflow: 'visible',
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'space-between',
+    boxShadow: '4px 0 10px rgba(0,0,0,0.1)',
+    position: 'fixed',
+    height: '100vh',
+    zIndex: 1000,
+    top: 0,
+    left: 0
+  }),
+  btnHamburguesa: (enHover) => ({
+    background: enHover ? 'rgba(255, 255, 255, 0.1)' : 'none',
+    border: 'none', 
+    color: 'white', 
+    fontSize: '24px', 
+    cursor: 'pointer', 
+    padding: '15px 20px', 
+    textAlign: 'left',
+    transition: 'background 0.2s',
+    display: 'flex',
+    alignItems: 'center'
+  }),
+  itemMenu: (enHover) => ({
+    padding: '15px 20px',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '15px',
+    backgroundColor: enHover ? '#007bff' : 'transparent',
+    borderLeft: enHover ? '4px solid #66b0ff' : '4px solid transparent',
+    transition: 'all 0.2s',
+    whiteSpace: 'nowrap',
+    fontWeight: enHover ? 'bold' : 'normal',
+    fontSize: '16px'
+  }),
+  iconoMenu: {
+    fontSize: '20px',
+    minWidth: '25px',
+    textAlign: 'center'
+  },
+  submenuFlotante: {
+    position: 'absolute',
+    left: '100%',
+    top: 0,
+    backgroundColor: '#243342',
+    boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
+    borderRadius: '0 8px 8px 0',
+    padding: '6px 0',
+    minWidth: '290px',
+    zIndex: 2000,
+    border: '1px solid rgba(255, 255, 255, 0.1)',
+    borderLeft: 'none'
+  },
+  submenuTitulo: {
+    padding: '8px 16px',
+    fontSize: '11px',
+    fontWeight: 'bold',
+    textTransform: 'uppercase',
+    color: '#8da2b5',
+    borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+    marginBottom: '4px'
+  },
+  itemSubmenu: (enHover) => ({
+    padding: '10px 16px',
+    fontSize: '13px',
+    cursor: 'pointer',
+    color: enHover ? '#ffffff' : '#cfd8dc',
+    backgroundColor: enHover ? '#007bff' : 'transparent',
+    fontWeight: enHover ? 'bold' : 'normal',
+    display: 'flex',
+    alignItems: 'center',
+    transition: 'background 0.15s ease, color 0.15s ease',
+    whiteSpace: 'nowrap'
+  }),
+  contenidoPrincipal: (menuAbierto) => ({
+    marginLeft: menuAbierto ? '250px' : '65px',
+    padding: '15px 20px',
+    width: menuAbierto ? 'calc(100% - 250px)' : 'calc(100% - 65px)',
+    transition: 'margin-left 0.3s ease, width 0.3s ease',
+    fontFamily: 'Segoe UI, sans-serif',
+    boxSizing: 'border-box'
+  })
 }

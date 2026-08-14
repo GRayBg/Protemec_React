@@ -15,10 +15,11 @@ export default function GestionAlmacenInventario({ compras = [], API_URL, recarg
   }
   useEffect(() => { cargar() }, [])
 
-  // FILTRADO CORRECTO: Buscamos compras cuyo EstatusAlmacen sea 'Pendiente' (o no esté definido aún)
+  // FILTRADO: Ahora buscamos específicamente 'pendiente' en EstatusAlmacen
+  // Las cotizaciones (NULL) se ignoran automáticamente aquí.
   const comprasPendientes = compras.filter(c => {
-    const estAlmacen = String(c.EstatusAlmacen || c.estatusAlmacen || 'pendientes').toLowerCase()
-    return estAlmacen === 'pendiente' || estAlmacen === ''
+    const estAlmacen = String(c.EstatusAlmacen || c.estatusAlmacen || '').toLowerCase()
+    return estAlmacen === 'pendiente'
   })
 
   const procesarAlta = async (e) => {
@@ -41,7 +42,7 @@ export default function GestionAlmacenInventario({ compras = [], API_URL, recarg
   }
 
   return (
-    <div style={{ padding: '20px' }}>
+    <div style={{ padding: '20px', fontFamily: 'Segoe UI, sans-serif' }}>
       <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
         <button 
           onClick={() => setSubPestana('stock')} 
@@ -93,7 +94,6 @@ export default function GestionAlmacenInventario({ compras = [], API_URL, recarg
             <thead>
               <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', textAlign: 'left' }}>
                 <th style={{ padding: '12px' }}>Folio</th>
-                <th style={{ padding: '12px' }}>Proveedor</th>
                 <th style={{ padding: '12px' }}>Producto Cotizado</th>
                 <th style={{ padding: '12px', textAlign: 'center' }}>Cantidad</th>
                 <th style={{ padding: '12px', textAlign: 'center' }}>Acción</th>
@@ -105,7 +105,6 @@ export default function GestionAlmacenInventario({ compras = [], API_URL, recarg
                 return (
                   <tr key={idC} style={{ borderBottom: '1px solid #f1f5f9' }}>
                     <td style={{ padding: '12px' }}>#{idC}</td>
-                    <td style={{ padding: '12px' }}>{c.Proveedor || c.proveedor}</td>
                     <td style={{ padding: '12px' }}><strong>{c.Producto || c.producto}</strong></td>
                     <td style={{ padding: '12px', textAlign: 'center' }}>{c.Cantidad || c.cantidad || 1}</td>
                     <td style={{ padding: '12px', textAlign: 'center' }}>
@@ -124,7 +123,7 @@ export default function GestionAlmacenInventario({ compras = [], API_URL, recarg
                 )
               })}
               {comprasPendientes.length === 0 && (
-                <tr><td colSpan="5" style={{ padding: '30px', textAlign: 'center', color: '#94a3b8' }}>No hay compras pendientes por recibir.</td></tr>
+                <tr><td colSpan="4" style={{ padding: '30px', textAlign: 'center', color: '#94a3b8' }}>No hay compras pendientes por recibir.</td></tr>
               )}
             </tbody>
           </table>
@@ -156,7 +155,7 @@ export default function GestionAlmacenInventario({ compras = [], API_URL, recarg
             )}
 
             <div>
-              <label style={{ fontSize: '11.5px', fontWeight: '700', color: '#475569', display: 'block', marginBottom: '4px' }}>Ubicación 3D (Nodo GLB exacto):</label>
+              <label style={{ fontSize: '11.5px', fontWeight: '700', color: '#475569', display: 'block', marginBottom: '4px' }}>Ubicación 3D:</label>
               <input type="text" placeholder="Ej. Pieza4" value={ubicacion} onChange={e => setUbicacion(e.target.value)} required style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '12.5px', boxSizing: 'border-box' }} />
             </div>
 
