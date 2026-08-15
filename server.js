@@ -58,34 +58,113 @@ async function subirABlobYObtenerSAS(file) {
 }
 
 // -------------------------------------------------------------
-// CRUD BÁSICO
+// 1. CLIENTES
 // -------------------------------------------------------------
 app.get('/api/clientes', async (req, res) => {
-  try { let pool = await sql.connect(config); let r = await pool.request().query('SELECT * FROM Clientes ORDER BY NombreCliente ASC'); res.json(r.recordset) } 
-  catch (e) { res.status(500).send(e.message) }
+  try { 
+    let pool = await sql.connect(config)
+    let r = await pool.request().query('SELECT * FROM Clientes ORDER BY NombreCliente ASC')
+    res.json(r.recordset) 
+  } catch (e) { res.status(500).send(e.message) }
 })
 
-app.get('/api/contactos', async (req, res) => {
-  try { let pool = await sql.connect(config); let r = await pool.request().query('SELECT ct.*, c.NombreCliente FROM ContactosClientes ct JOIN Clientes c ON ct.ClienteID = c.ClienteID'); res.json(r.recordset) } 
-  catch (e) { res.status(500).send(e.message) }
-})
-
-app.get('/api/ubicaciones', async (req, res) => {
-  try { let pool = await sql.connect(config); let r = await pool.request().query('SELECT * FROM Ubicaciones'); res.json(r.recordset) } 
-  catch (e) { res.status(500).send(e.message) }
-})
-
-app.get('/api/proyectos', async (req, res) => {
-  try { let pool = await sql.connect(config); let r = await pool.request().query('SELECT * FROM Proyectos'); res.json(r.recordset) } 
-  catch (e) { res.status(500).send(e.message) }
+app.post('/api/clientes', async (req, res) => {
+  const { nombreCliente, rfc } = req.body
+  try {
+    let pool = await sql.connect(config)
+    await pool.request()
+      .input('N', nombreCliente)
+      .input('R', rfc || null)
+      .query('INSERT INTO Clientes (NombreCliente, RFC_TaxID) VALUES (@N, @R)')
+    res.json({ mensaje: 'Guardado' })
+  } catch (e) { res.status(500).send(e.message) }
 })
 
 // -------------------------------------------------------------
-// COMPRAS
+// 2. CONTACTOS DE CLIENTES
+// -------------------------------------------------------------
+app.get('/api/contactos', async (req, res) => {
+  try { 
+    let pool = await sql.connect(config)
+    let r = await pool.request().query('SELECT ct.*, c.NombreCliente FROM ContactosClientes ct JOIN Clientes c ON ct.ClienteID = c.ClienteID')
+    res.json(r.recordset) 
+  } catch (e) { res.status(500).send(e.message) }
+})
+
+app.post('/api/contactos', async (req, res) => {
+  const { clienteID, ubicacionID, nombreContacto, puesto, telefono, email } = req.body
+  try {
+    let pool = await sql.connect(config)
+    await pool.request()
+      .input('ClienteID', sql.Int, parseInt(clienteID, 10))
+      .input('UbicacionID', sql.Int, parseInt(ubicacionID, 10))
+      .input('NombreContacto', sql.NVarChar, nombreContacto || '')
+      .input('Puesto', sql.NVarChar, puesto || null)
+      .input('Telefono', sql.NVarChar, telefono || null)
+      .input('Email', sql.NVarChar, email || null)
+      .query('INSERT INTO ContactosClientes (ClienteID, UbicacionID, NombreContacto, Puesto, Telefono, Email) VALUES (@ClienteID, @UbicacionID, @NombreContacto, @Puesto, @Telefono, @Email)')
+    res.json({ mensaje: 'Contacto registrado correctamente' })
+  } catch (e) { res.status(500).send(e.message) }
+})
+
+// -------------------------------------------------------------
+// 3. UBICACIONES
+// -------------------------------------------------------------
+app.get('/api/ubicaciones', async (req, res) => {
+  try { 
+    let pool = await sql.connect(config)
+    let r = await pool.request().query('SELECT * FROM Ubicaciones')
+    res.json(r.recordset) 
+  } catch (e) { res.status(500).send(e.message) }
+})
+
+app.post('/api/ubicaciones', async (req, res) => {
+  const { clienteID, nombreUbicacion, direccion, ciudad } = req.body
+  try {
+    let pool = await sql.connect(config)
+    await pool.request()
+      .input('ClienteID', sql.Int, parseInt(clienteID, 10))
+      .input('NombreUbicacion', sql.NVarChar, nombreUbicacion || '')
+      .input('Direccion', sql.NVarChar, direccion || null)
+      .input('Ciudad', sql.NVarChar, ciudad || null)
+      .query('INSERT INTO Ubicaciones (ClienteID, NombreUbicacion, Direccion, Ciudad) VALUES (@ClienteID, @NombreUbicacion, @Direccion, @Ciudad)')
+    res.json({ mensaje: 'Ubicación registrada correctamente' })
+  } catch (e) { res.status(500).send(e.message) }
+})
+
+// -------------------------------------------------------------
+// 4. PROYECTOS
+// -------------------------------------------------------------
+app.get('/api/proyectos', async (req, res) => {
+  try { 
+    let pool = await sql.connect(config)
+    let r = await pool.request().query('SELECT * FROM Proyectos')
+    res.json(r.recordset) 
+  } catch (e) { res.status(500).send(e.message) }
+})
+
+app.post('/api/proyectos', async (req, res) => {
+  const { nombreProyecto, ubicacionID, descripcion } = req.body
+  try {
+    let pool = await sql.connect(config)
+    await pool.request()
+      .input('NombreProyecto', sql.NVarChar, nombreProyecto || '')
+      .input('UbicacionID', sql.Int, parseInt(ubicacionID, 10))
+      .input('Descripcion', sql.NVarChar, descripcion || null)
+      .query('INSERT INTO Proyectos (NombreProyecto, UbicacionID, Descripcion) VALUES (@NombreProyecto, @UbicacionID, @Descripcion)')
+    res.json({ mensaje: 'Proyecto registrado correctamente' })
+  } catch (e) { res.status(500).send(e.message) }
+})
+
+// -------------------------------------------------------------
+// 5. COMPRAS (Con lógica EstatusAlmacen)
 // -------------------------------------------------------------
 app.get('/api/datos', async (req, res) => {
-  try { let pool = await sql.connect(config); let r = await pool.request().query('SELECT * FROM Compras ORDER BY FechaCreacion DESC'); res.json(r.recordset) } 
-  catch (e) { res.status(500).send(e.message) }
+  try { 
+    let pool = await sql.connect(config)
+    let r = await pool.request().query('SELECT * FROM Compras ORDER BY FechaCreacion DESC')
+    res.json(r.recordset) 
+  } catch (e) { res.status(500).send(e.message) }
 })
 
 app.post('/api/compras', upload.single('archivo'), async (req, res) => {
@@ -117,7 +196,6 @@ app.put('/api/compras/:id', upload.single('archivo'), async (req, res) => {
     let actual = await pool.request().input('ID', parseInt(id)).query('SELECT EstatusAlmacen FROM Compras WHERE Numero = @ID')
     let ea = actual.recordset[0]?.EstatusAlmacen
     
-    // Si cambia a Comprado y no tenía estatus de almacén, lo ponemos en Pendiente
     if (estatus === 'Comprado' && (ea === null || ea === '')) {
       ea = 'Pendiente'
     }
@@ -133,19 +211,37 @@ app.put('/api/compras/:id', upload.single('archivo'), async (req, res) => {
 })
 
 // -------------------------------------------------------------
-// INGENIERÍA
+// 6. INGENIERÍA
 // -------------------------------------------------------------
 app.get('/api/ingenieria', async (req, res) => {
-  try { let pool = await sql.connect(config); let r = await pool.request().query('SELECT * FROM Ingenieria ORDER BY FechaCreacion DESC'); res.json(r.recordset) } 
-  catch (e) { res.status(500).send(e.message) }
+  try { 
+    let pool = await sql.connect(config)
+    let r = await pool.request().query('SELECT * FROM Ingenieria ORDER BY FechaCreacion DESC')
+    res.json(r.recordset) 
+  } catch (e) { res.status(500).send(e.message) }
+})
+
+app.post('/api/ingenieria', uploadIngenieria, async (req, res) => {
+  const { nombre, proyecto, cantidadRequerida } = req.body
+  let urlGLB = req.files?.archivoGlb ? await subirABlobYObtenerSAS(req.files.archivoGlb[0]) : null
+  try {
+    let pool = await sql.connect(config)
+    await pool.request()
+      .input('N', nombre).input('P', proyecto).input('CR', cantidadRequerida).input('GLB', urlGLB)
+      .query('INSERT INTO Ingenieria (Nombre, Proyecto, CantidadRequerida, UrlGLB, EstatusAvance, FechaCreacion) VALUES (@N, @P, @CR, @GLB, \'Pendiente\', GETDATE())')
+    res.json({ mensaje: 'Guardado' })
+  } catch (e) { res.status(500).send(e.message) }
 })
 
 // -------------------------------------------------------------
-// ALMACÉN E INVENTARIO
+// 7. ALMACÉN E INVENTARIO
 // -------------------------------------------------------------
 app.get('/api/inventario', async (req, res) => {
-  try { let pool = await sql.connect(config); let r = await pool.request().query('SELECT * FROM InventarioAlmacen ORDER BY ID DESC'); res.json(r.recordset) } 
-  catch (e) { res.status(500).send(e.message) }
+  try { 
+    let pool = await sql.connect(config)
+    let r = await pool.request().query('SELECT * FROM InventarioAlmacen ORDER BY ID DESC')
+    res.json(r.recordset) 
+  } catch (e) { res.status(500).send(e.message) }
 })
 
 app.post('/api/inventario/ingresar', async (req, res) => {
