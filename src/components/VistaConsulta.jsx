@@ -11,7 +11,9 @@ export default function VistaConsulta({ compras, iniciarEdicion, proveedoresUnic
   const [busquedaRapida, setBusquedaRapida] = useState('')
   const [filtroProveedor, setFiltroProveedor] = useState('')
   const [filtroProyecto, setFiltroProyecto] = useState('')
+  const [filtroProyectoId, setFiltroProyectoId] = useState('')
   const [filtroCategoria, setFiltroCategoria] = useState('')
+  const [filtroMaterial, setFiltroMaterial] = useState('')
   const [filtroEstatus, setFiltroEstatus] = useState('')
   const [filtroFechaInicio, setFiltroFechaInicio] = useState('')
   const [filtroFechaFin, setFiltroFechaFin] = useState('')
@@ -43,13 +45,22 @@ export default function VistaConsulta({ compras, iniciarEdicion, proveedoresUnic
     }
   })
 
+  // Listas únicas para los selectores
+  const materialesUnicos = [...new Set(compras.map(c => c.Material || c.material).filter(Boolean))]
+  const proyectoIdsUnicos = [...new Set(compras.map(c => c.ProyectoID_Externo || c.proyectoID_Externo).filter(Boolean))]
+  const proyectosNombreUnicos = [...new Set(compras.map(c => c.Proyecto || c.proyecto).filter(Boolean))]
+
   const comprasFiltradas = comprasProcesadas.filter((c) => {
+    const est = (c.Estatus || c.estatus || 'Comprado').toLowerCase()
+    if (est === 'cancelado') return false
+
     const prov = (c.Proveedor || c.proveedor || '').toLowerCase()
     const proy = (c.Proyecto || c.proyecto || '').toLowerCase()
+    const proyId = (c.ProyectoID_Externo || c.proyectoID_Externo || '').toLowerCase()
     const cat = (c.Categoria || c.categoria || '').toLowerCase()
+    const mat = (c.Material || c.material || '').toLowerCase()
     const prod = (c.Producto || c.producto || '').toLowerCase()
     const idStr = String(c.Numero ?? c.ID ?? c.Id ?? c.id ?? '')
-    const est = (c.Estatus || c.estatus || 'Comprado').toLowerCase()
     const fecha = String(c.FechaCompra || c.fechaCompra || c.Fecha || c.fecha || '').split('T')[0]
 
     const cumpleBusquedaRapida = !busquedaRapida || 
@@ -59,14 +70,16 @@ export default function VistaConsulta({ compras, iniciarEdicion, proveedoresUnic
 
     const cumpleProveedor = !filtroProveedor || prov === filtroProveedor.toLowerCase()
     const cumpleProyecto = !filtroProyecto || proy === filtroProyecto.toLowerCase()
+    const cumpleProyectoId = !filtroProyectoId || proyId === filtroProyectoId.toLowerCase()
     const cumpleCategoria = !filtroCategoria || cat === filtroCategoria.toLowerCase()
+    const cumpleMaterial = !filtroMaterial || mat === filtroMaterial.toLowerCase()
     const cumpleEstatus = !filtroEstatus || est === filtroEstatus.toLowerCase()
     
     let cumpleFecha = true
     if (filtroFechaInicio && fecha) cumpleFecha = cumpleFecha && fecha >= filtroFechaInicio
     if (filtroFechaFin && fecha) cumpleFecha = cumpleFecha && fecha <= filtroFechaFin
 
-    return cumpleBusquedaRapida && cumpleProveedor && cumpleProyecto && cumpleCategoria && cumpleEstatus && cumpleFecha
+    return cumpleBusquedaRapida && cumpleProveedor && cumpleProyecto && cumpleProyectoId && cumpleCategoria && cumpleMaterial && cumpleEstatus && cumpleFecha
   })
 
   const sumaCostoComprado = comprasFiltradas
@@ -76,8 +89,8 @@ export default function VistaConsulta({ compras, iniciarEdicion, proveedoresUnic
   const sumaCostoCompradoConIva = sumaCostoComprado * 1.16
 
   const limpiarFiltros = () => {
-    setBusquedaRapida(''); setFiltroProveedor(''); setFiltroProyecto('')
-    setFiltroCategoria(''); setFiltroEstatus(''); setFiltroFechaInicio(''); setFiltroFechaFin('')
+    setBusquedaRapida(''); setFiltroProveedor(''); setFiltroProyecto(''); setFiltroProyectoId('')
+    setFiltroCategoria(''); setFiltroMaterial(''); setFiltroEstatus(''); setFiltroFechaInicio(''); setFiltroFechaFin('')
   }
 
   const columnasPrincipales = [
@@ -158,16 +171,36 @@ export default function VistaConsulta({ compras, iniciarEdicion, proveedoresUnic
       
       {/* TARJETAS DE INDICADORES (KPIs) */}
       <div style={estilos.gridMetricas}>
+        {/* KPI PROYECTO ACTIVO CON DOS SELECTORES INDEPENDIENTES */}
         <div style={{ ...estilos.kpiCard, borderLeft: '4px solid #2563eb' }}>
           <div style={estilos.kpiHeader}>
             <span style={estilos.kpiLabel}>Proyecto Activo</span>
             <span style={estilos.kpiIcono}>📁</span>
           </div>
-          <select value={filtroProyecto} onChange={(e) => setFiltroProyecto(e.target.value)} style={estilos.kpiSelectProyecto}>
-            <option value="">Todos los Proyectos</option>
-            {proyectosUnicos.map((p, i) => <option key={i} value={p}>{p}</option>)}
-          </select>
-          <span style={estilos.kpiSubtexto}>{filtroProyecto ? 'Filtrando este proyecto' : 'Clic para seleccionar proyecto'}</span>
+          
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', margin: '4px 0' }}>
+            <select 
+              value={filtroProyecto} 
+              onChange={(e) => { setFiltroProyecto(e.target.value); if(e.target.value) setFiltroProyectoId(''); }} 
+              style={estilos.kpiSelectProyecto}
+            >
+              <option value="">-- Filtrar por Nombre --</option>
+              {proyectosNombreUnicos.map((p, i) => <option key={i} value={p}>{p}</option>)}
+            </select>
+
+            <select 
+              value={filtroProyectoId} 
+              onChange={(e) => { setFiltroProyectoId(e.target.value); if(e.target.value) setFiltroProyecto(''); }} 
+              style={{ ...estilos.kpiSelectProyecto, fontSize: '14px', color: '#0284c7' }}
+            >
+              <option value="">-- Filtrar por ID Externo --</option>
+              {proyectoIdsUnicos.map((pid, i) => <option key={i} value={pid}>{pid}</option>)}
+            </select>
+          </div>
+
+          <span style={estilos.kpiSubtexto}>
+            {(filtroProyecto || filtroProyectoId) ? 'Proyecto filtrado activo' : 'Selecciona por Nombre o ID'}
+          </span>
         </div>
 
         <div style={{ ...estilos.kpiCard, borderLeft: '4px solid #6366f1' }}>
@@ -199,11 +232,77 @@ export default function VistaConsulta({ compras, iniciarEdicion, proveedoresUnic
           {busquedaRapida && <button onClick={() => setBusquedaRapida('')} style={estilos.btnLimpiarInput}>✕</button>}
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
+          {/* BOTÓN DE LIMPIAR FILTROS GENERAL */}
+          <button onClick={limpiarFiltros} style={estilos.botonLimpiarGeneral} title="Restablecer todos los filtros">
+            🔄 Limpiar Filtros
+          </button>
           <button onClick={() => setMostrarFiltros(!mostrarFiltros)} onMouseEnter={() => setHoverBtnFiltros(true)} onMouseLeave={() => setHoverBtnFiltros(false)} style={estilos.botonToggle(mostrarFiltros, hoverBtnFiltros)}>
             <span>{mostrarFiltros ? '✕' : '⚙️'}</span><span>{mostrarFiltros ? 'Ocultar Filtros' : 'Filtros Avanzados'}</span>
           </button>
         </div>
       </div>
+
+      {/* PANEL DE FILTROS AVANZADOS */}
+      {mostrarFiltros && (
+        <div style={estilos.panelFiltrosAvanzados}>
+          <div style={estilos.gridFiltros}>
+            <div style={estilos.filtroItem}>
+              <label style={estilos.filtroLabel}>Proveedor</label>
+              <select value={filtroProveedor} onChange={(e) => setFiltroProveedor(e.target.value)} style={estilos.filtroSelect}>
+                <option value="">Todos los proveedores</option>
+                {proveedoresUnicos && proveedoresUnicos.map((prov, i) => <option key={i} value={prov}>{prov}</option>)}
+              </select>
+            </div>
+
+            <div style={estilos.filtroItem}>
+              <label style={estilos.filtroLabel}>Proyecto ID</label>
+              <select value={filtroProyectoId} onChange={(e) => setFiltroProyectoId(e.target.value)} style={estilos.filtroSelect}>
+                <option value="">Todos los IDs</option>
+                {proyectoIdsUnicos && proyectoIdsUnicos.map((pid, i) => <option key={i} value={pid}>{pid}</option>)}
+              </select>
+            </div>
+
+            <div style={estilos.filtroItem}>
+              <label style={estilos.filtroLabel}>Categoría</label>
+              <select value={filtroCategoria} onChange={(e) => setFiltroCategoria(e.target.value)} style={estilos.filtroSelect}>
+                <option value="">Todas las categorías</option>
+                {categoriasUnicas && categoriasUnicas.map((cat, i) => <option key={i} value={cat}>{cat}</option>)}
+              </select>
+            </div>
+
+            <div style={estilos.filtroItem}>
+              <label style={estilos.filtroLabel}>Material</label>
+              <select value={filtroMaterial} onChange={(e) => setFiltroMaterial(e.target.value)} style={estilos.filtroSelect}>
+                <option value="">Todos los materiales</option>
+                {materialesUnicos && materialesUnicos.map((mat, i) => <option key={i} value={mat}>{mat}</option>)}
+              </select>
+            </div>
+
+            <div style={estilos.filtroItem}>
+              <label style={estilos.filtroLabel}>Estatus</label>
+              <select value={filtroEstatus} onChange={(e) => setFiltroEstatus(e.target.value)} style={estilos.filtroSelect}>
+                <option value="">Todos los estatus</option>
+                <option value="Comprado">Comprado</option>
+                <option value="Cotizado">Cotizado</option>
+              </select>
+            </div>
+
+            <div style={estilos.filtroItem}>
+              <label style={estilos.filtroLabel}>Fecha Inicio</label>
+              <input type="date" value={filtroFechaInicio} onChange={(e) => setFiltroFechaInicio(e.target.value)} style={estilos.filtroInput} />
+            </div>
+
+            <div style={estilos.filtroItem}>
+              <label style={estilos.filtroLabel}>Fecha Fin</label>
+              <input type="date" value={filtroFechaFin} onChange={(e) => setFiltroFechaFin(e.target.value)} style={estilos.filtroInput} />
+            </div>
+          </div>
+
+          <div style={estilos.contenedorAccionesFiltros}>
+            <button onClick={limpiarFiltros} style={estilos.btnLimpiarFiltros}>Limpiar Filtros</button>
+          </div>
+        </div>
+      )}
 
       {/* TABLA */}
       <div style={estilos.contenedorTabla}>
@@ -241,12 +340,20 @@ export default function VistaConsulta({ compras, iniciarEdicion, proveedoresUnic
                       <td colSpan={columnasPrincipales.length + 1} style={{ padding: '12px 20px', borderBottom: '1px solid #e2e8f0' }}>
                         <div style={estilos.contenedorDetalle}>
                           <div style={estilos.detalleItem}>
+                            <span style={estilos.detalleLabel}>Proyecto ID:</span>
+                            <span style={{ ...estilos.detalleValor, color: '#0284c7', fontWeight: '700' }}>🏷️ {fila.ProyectoID_Externo || fila.proyectoID_Externo || '—'}</span>
+                          </div>
+                          <div style={estilos.detalleItem}>
                             <span style={estilos.detalleLabel}>Proyecto:</span>
                             <span style={{ ...estilos.detalleValor, color: '#2563eb', fontWeight: '700' }}>📁 {fila.Proyecto || fila.proyecto || '—'}</span>
                           </div>
                           <div style={estilos.detalleItem}>
                             <span style={estilos.detalleLabel}>Categoría:</span>
                             <span style={estilos.detalleValor}>{fila.Categoria || fila.categoria || '—'}</span>
+                          </div>
+                          <div style={estilos.detalleItem}>
+                            <span style={estilos.detalleLabel}>Material:</span>
+                            <span style={{ ...estilos.detalleValor, color: '#7c3aed' }}>🛠️ {fila.Material || fila.material || '—'}</span>
                           </div>
                           <div style={estilos.detalleItem}>
                             <span style={estilos.detalleLabel}>Precio Unitario:</span>
@@ -269,7 +376,12 @@ export default function VistaConsulta({ compras, iniciarEdicion, proveedoresUnic
                             </span>
                           </div>
 
-                          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
+                          <div style={{ width: '100%', marginTop: '6px', paddingTop: '6px', borderTop: '1px dashed #cbd5e1' }}>
+                            <span style={estilos.detalleLabel}>Notas / Observaciones:</span>
+                            <span style={{ ...estilos.detalleValor, color: '#475569', fontStyle: 'italic' }}> {fila.Notas || fila.notas || 'Sin notas registradas.'}</span>
+                          </div>
+
+                          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', marginTop: '4px' }}>
                             <button onClick={() => iniciarEdicion(fila)} style={estilos.botonAccionEditar}>✏️ Editar Registro</button>
                           </div>
                         </div>
@@ -287,19 +399,29 @@ export default function VistaConsulta({ compras, iniciarEdicion, proveedoresUnic
 }
 
 const estilos = {
-  gridMetricas: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px', marginBottom: '14px' },
-  kpiCard: { backgroundColor: '#ffffff', borderRadius: '10px', padding: '14px 16px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: '80px' },
-  kpiHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' },
+  gridMetricas: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '14px', marginBottom: '14px' },
+  kpiCard: { backgroundColor: '#ffffff', borderRadius: '10px', padding: '14px 16px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: '90px' },
+  kpiHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' },
   kpiLabel: { fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', color: '#64748b' },
+  kpiValoresContainer: { display: 'flex', flexDirection: 'column', gap: '4px' },
   kpiValor: { fontSize: '21px', fontWeight: '800' },
-  kpiSelectProyecto: { fontSize: '17px', fontWeight: '800', color: '#0f172a', backgroundColor: 'transparent', border: 'none', outline: 'none', cursor: 'pointer', width: '100%' },
+  kpiSelectProyecto: { fontSize: '15px', fontWeight: '800', color: '#0f172a', backgroundColor: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '4px 6px', outline: 'none', cursor: 'pointer', width: '100%' },
   kpiSubtexto: { fontSize: '11px', color: '#94a3b8', fontFamily: 'Consolas, monospace' },
   barraHerramientas: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '14px' },
   contenedorBuscador: { position: 'relative', flex: '1', display: 'flex', alignItems: 'center' },
   iconoBuscador: { position: 'absolute', left: '12px', color: '#94a3b8' },
   inputBuscador: { width: '100%', padding: '9px 34px 9px 36px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', outline: 'none' },
   btnLimpiarInput: { position: 'absolute', right: '10px', background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' },
+  botonLimpiarGeneral: { backgroundColor: '#f1f5f9', color: '#334155', border: '1px solid #cbd5e1', padding: '9px 12px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' },
   botonToggle: (activo) => ({ backgroundColor: activo ? '#0f172a' : '#ffffff', color: activo ? '#ffffff' : '#334155', border: '1px solid #cbd5e1', padding: '9px 14px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }),
+  panelFiltrosAvanzados: { backgroundColor: '#ffffff', borderRadius: '10px', border: '1px solid #e2e8f0', padding: '16px', marginBottom: '14px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)' },
+  gridFiltros: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '12px' },
+  filtroItem: { display: 'flex', flexDirection: 'column', gap: '4px' },
+  filtroLabel: { fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase' },
+  filtroSelect: { padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '12.5px', outline: 'none', backgroundColor: '#fff' },
+  filtroInput: { padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '12.5px', outline: 'none', backgroundColor: '#fff' },
+  contenedorAccionesFiltros: { display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid #f1f5f9', paddingTop: '10px' },
+  btnLimpiarFiltros: { backgroundColor: '#f1f5f9', color: '#334155', border: '1px solid #cbd5e1', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' },
   contenedorTabla: { backgroundColor: '#ffffff', borderRadius: '10px', border: '1px solid #e2e8f0', overflowX: 'auto' },
   tabla: { width: '100%', borderCollapse: 'collapse', fontSize: '13px' },
   encabezadoTabla: { backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0' },
@@ -307,7 +429,7 @@ const estilos = {
   filaTabla: (hover) => ({ borderBottom: '1px solid #f1f5f9', backgroundColor: hover ? '#f8fafc' : '#ffffff' }),
   td: { padding: '12px 10px', verticalAlign: 'middle', color: '#1e293b' },
   botonExpandir: { background: 'none', border: 'none', cursor: 'pointer', fontSize: '11px', color: '#64748b', padding: '4px 8px' },
-  contenedorDetalle: { display: 'flex', alignItems: 'center', gap: '24px', flexWrap: 'wrap', padding: '4px 8px' },
+  contenedorDetalle: { display: 'flex', alignItems: 'flex-start', gap: '20px', flexWrap: 'wrap', padding: '4px 8px' },
   detalleItem: { display: 'flex', flexDirection: 'column', gap: '2px' },
   detalleLabel: { fontSize: '10.5px', fontWeight: '700', textTransform: 'uppercase', color: '#64748b' },
   detalleValor: { fontSize: '12.5px', fontWeight: '600', color: '#1e293b' },

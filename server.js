@@ -157,7 +157,7 @@ app.post('/api/proyectos', async (req, res) => {
 })
 
 // -------------------------------------------------------------
-// 5. COMPRAS (Con lógica EstatusAlmacen)
+// 5. COMPRAS
 // -------------------------------------------------------------
 app.get('/api/datos', async (req, res) => {
   try { 
@@ -168,7 +168,7 @@ app.get('/api/datos', async (req, res) => {
 })
 
 app.post('/api/compras', upload.single('archivo'), async (req, res) => {
-  const { proveedor, costo, categoria, producto, proyecto, precioUnitario, cantidad, fechaCompra, estatus } = req.body
+  const { proveedor, costo, categoria, producto, proyecto, proyectoIdExterno, precioUnitario, cantidad, fechaCompra, estatus, material, notas } = req.body
   let finalUrl = req.file ? await subirABlobYObtenerSAS(req.file) : null
   
   const estatusCompra = estatus || 'Pedido'
@@ -176,19 +176,49 @@ app.post('/api/compras', upload.single('archivo'), async (req, res) => {
 
   try {
     let pool = await sql.connect(config)
+    let proyectoID = null
+
+    if (proyecto && proyecto.trim() !== '') {
+      let buscarProy = await pool.request()
+        .input('Nombre', sql.NVarChar, proyecto.trim())
+        .query('SELECT ProyectoID FROM Proyectos WHERE NombreProyecto = @Nombre')
+
+      if (buscarProy.recordset.length > 0) {
+        proyectoID = buscarProy.recordset[0].ProyectoID
+      } else {
+        let insertarProy = await pool.request()
+          .input('Nombre', sql.NVarChar, proyecto.trim())
+          .query('INSERT INTO Proyectos (NombreProyecto, Estatus) OUTPUT INSERTED.ProyectoID VALUES (@Nombre, \'Activo\')')
+        proyectoID = insertarProy.recordset[0].ProyectoID
+      }
+    }
+
     await pool.request()
-      .input('P', proveedor).input('C', costo).input('Cat', categoria).input('Prod', producto)
-      .input('Proy', proyecto).input('PU', precioUnitario).input('Cant', cantidad)
-      .input('URL', finalUrl).input('E', estatusCompra).input('EA', estatusAlmacen).input('F', fechaCompra)
-      .query(`INSERT INTO Compras (Proveedor, Costo, Categoria, Producto, Proyecto, PrecioUnitario, Cantidad, URL_SaaS, FechaCompra, Estatus, EstatusAlmacen, FechaCreacion) 
-              VALUES (@P, @C, @Cat, @Prod, @Proy, @PU, @Cant, @URL, @F, @E, @EA, CAST(GETDATE() AS DATE))`)
+      .input('P', proveedor)
+      .input('C', costo)
+      .input('Cat', categoria)
+      .input('Prod', producto)
+      .input('ProyText', proyecto || null)
+      .input('ProyID', proyectoID)
+      .input('ProyExt', proyectoIdExterno || null)
+      .input('Mat', material || null)
+      .input('Not', notas || null)
+      .input('PU', precioUnitario)
+      .input('Cant', cantidad)
+      .input('URL', finalUrl)
+      .input('E', estatusCompra)
+      .input('EA', estatusAlmacen)
+      .input('F', fechaCompra)
+      .query(`INSERT INTO Compras (Proveedor, Costo, Categoria, Producto, Proyecto, ProyectoID, ProyectoID_Externo, Material, Notas, PrecioUnitario, Cantidad, URL_SaaS, FechaCompra, Estatus, EstatusAlmacen, FechaCreacion) 
+              VALUES (@P, @C, @Cat, @Prod, @ProyText, @ProyID, @ProyExt, @Mat, @Not, @PU, @Cant, @URL, @F, @E, @EA, CAST(GETDATE() AS DATE))`)
+    
     res.json({ mensaje: 'Guardado' })
   } catch (e) { res.status(500).send(e.message) }
 })
 
 app.put('/api/compras/:id', upload.single('archivo'), async (req, res) => {
   const { id } = req.params
-  const { proveedor, costo, categoria, producto, proyecto, precioUnitario, cantidad, fechaCompra, urlSaaS, estatus } = req.body
+  const { proveedor, costo, categoria, producto, proyecto, proyectoIdExterno, precioUnitario, cantidad, fechaCompra, urlSaaS, estatus, material, notas } = req.body
   let finalUrl = req.file ? await subirABlobYObtenerSAS(req.file) : urlSaaS
   
   try {
@@ -200,14 +230,58 @@ app.put('/api/compras/:id', upload.single('archivo'), async (req, res) => {
       ea = 'Pendiente'
     }
 
+    let proyectoID = null
+
+    if (proyecto && proyecto.trim() !== '') {
+      let buscarProy = await pool.request()
+        .input('Nombre', sql.NVarChar, proyecto.trim())
+        .query('SELECT ProyectoID FROM Proyectos WHERE NombreProyecto = @Nombre')
+
+      if (buscarProy.recordset.length > 0) {
+        proyectoID = buscarProy.recordset[0].ProyectoID
+      } else {
+        let insertarProy = await pool.request()
+          .input('Nombre', sql.NVarChar, proyecto.trim())
+          .query('INSERT INTO Proyectos (NombreProyecto, Estatus) OUTPUT INSERTED.ProyectoID VALUES (@Nombre, \'Activo\')')
+        proyectoID = insertarProy.recordset[0].ProyectoID
+      }
+    }
+
     await pool.request()
-      .input('ID', parseInt(id)).input('P', proveedor).input('C', costo).input('Cat', categoria)
-      .input('Prod', producto).input('Proy', proyecto).input('PU', precioUnitario)
-      .input('Cant', cantidad).input('URL', finalUrl).input('E', estatus).input('EA', ea).input('F', fechaCompra)
-      .query(`UPDATE Compras SET Proveedor=@P, Costo=@C, Categoria=@Cat, Producto=@Prod, Proyecto=@Proy, PrecioUnitario=@PU, 
+      .input('ID', parseInt(id))
+      .input('P', proveedor)
+      .input('C', costo)
+      .input('Cat', categoria)
+      .input('Prod', producto)
+      .input('ProyText', proyecto || null)
+      .input('ProyID', proyectoID)
+      .input('ProyExt', proyectoIdExterno || null)
+      .input('Mat', material || null)
+      .input('Not', notas || null)
+      .input('PU', precioUnitario)
+      .input('Cant', cantidad)
+      .input('URL', finalUrl)
+      .input('E', estatus)
+      .input('EA', ea)
+      .input('F', fechaCompra)
+      .query(`UPDATE Compras SET Proveedor=@P, Costo=@C, Categoria=@Cat, Producto=@Prod, Proyecto=@ProyText, ProyectoID=@ProyID, ProyectoID_Externo=@ProyExt, Material=@Mat, Notas=@Not, PrecioUnitario=@PU, 
               Cantidad=@Cant, URL_SaaS=@URL, FechaCompra=@F, Estatus=@E, EstatusAlmacen=@EA WHERE Numero=@ID`)
+    
     res.json({ mensaje: 'Actualizado' })
   } catch (e) { res.status(500).send(e.message) }
+})
+
+app.put('/api/compras/cancelar/:id', async (req, res) => {
+  const { id } = req.params
+  try {
+    let pool = await sql.connect(config)
+    await pool.request()
+      .input('ID', parseInt(id))
+      .query("UPDATE Compras SET Estatus = 'Cancelado' WHERE Numero = @ID")
+    res.json({ mensaje: 'Cancelado correctamente' })
+  } catch (e) { 
+    res.status(500).send(e.message) 
+  }
 })
 
 // -------------------------------------------------------------

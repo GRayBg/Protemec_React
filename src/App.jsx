@@ -42,12 +42,17 @@ export default function App() {
   const [categoria, setCategoria] = useState('')
   const [producto, setProducto] = useState('')
   const [proyecto, setProyecto] = useState('')
+  const [proyectoIdExterno, setProyectoIdExterno] = useState('')
   const [precioUnitario, setPrecioUnitario] = useState('')
   const [cantidad, setCantidad] = useState('')
-  const [estatus, setEstatus] = useState('Comprado')
+  const [estatus, setEstatus] = useState('Cotizado')
   const [urlSaaS, setUrlSaaS] = useState('')
   const [archivoSeleccionado, setArchivoSeleccionado] = useState(null)
   const [fechaCompra, setFechaCompra] = useState('')
+  
+  const [material, setMaterial] = useState('')
+  const [notas, setNotas] = useState('')
+
   const [guardando, setGuardando] = useState(false)
 
   const cargarTodo = async () => {
@@ -93,10 +98,15 @@ export default function App() {
     setCategoria(fila.Categoria || fila.categoria || '')
     setProducto(fila.Producto || fila.producto || '')
     setProyecto(fila.Proyecto || fila.proyecto || '')
+    setProyectoIdExterno(fila.ProyectoID_Externo || fila.proyectoID_Externo || '')
     setPrecioUnitario(fila.PrecioUnitario || fila.precioUnitario || '')
     setCantidad(fila.Cantidad || fila.cantidad || '')
     setEstatus(fila.Estatus || fila.estatus || 'Comprado')
     setUrlSaaS(fila.URL_SaaS || fila.urlSaaS || fila.url_saas || '')
+    
+    setMaterial(fila.Material || fila.material || '')
+    setNotas(fila.Notas || fila.notas || '')
+
     setArchivoSeleccionado(null)
 
     const valorFecha = fila.FechaCompra || fila.fechaCompra || fila.Fecha || fila.fecha
@@ -109,8 +119,27 @@ export default function App() {
   const cancelarEdicion = () => {
     setIdEditando(null)
     setProveedor(''); setCosto(''); setCategoria(''); setProducto('')
-    setProyecto(''); setPrecioUnitario(''); setCantidad(''); setEstatus('Comprado')
+    setProyecto(''); setProyectoIdExterno(''); setPrecioUnitario(''); setCantidad(''); setEstatus('Cotizado')
     setUrlSaaS(''); setArchivoSeleccionado(null); setFechaCompra('')
+    setMaterial(''); setNotas('')
+  }
+
+  const manejarCancelarRegistro = async () => {
+    if (!idEditando) return
+    if (!window.confirm(`¿Estás seguro de cancelar el registro #${idEditando}?`)) return
+
+    try {
+      const respuesta = await fetch(`${API_URL}/api/compras/cancelar/${idEditando}`, {
+        method: 'PUT'
+      })
+      if (!respuesta.ok) throw new Error('Error al cancelar el registro')
+
+      cancelarEdicion()
+      cargarTodo()
+      setPestanaCompras('consulta')
+    } catch (err) {
+      alert('Error: ' + err.message)
+    }
   }
 
   const manejarEnvio = async (e) => {
@@ -127,10 +156,15 @@ export default function App() {
     formData.append('categoria', categoria)
     formData.append('producto', producto)
     formData.append('proyecto', proyecto)
+    formData.append('proyectoIdExterno', proyectoIdExterno)
     formData.append('precioUnitario', parseFloat(precioUnitario) || 0)
     formData.append('cantidad', parseInt(cantidad, 10) || 0)
     formData.append('estatus', estatus)
     formData.append('urlSaaS', urlSaaS)
+    
+    formData.append('material', material)
+    formData.append('notas', notas)
+
     if (fechaCompra) formData.append('fechaCompra', fechaCompra)
     if (archivoSeleccionado) formData.append('archivo', archivoSeleccionado)
 
@@ -189,7 +223,7 @@ export default function App() {
                   <div onMouseEnter={() => setHoverSubmenuItem('c-1')} onMouseLeave={() => setHoverSubmenuItem(null)} onClick={() => { setModuloPrincipal('compras'); setPestanaCompras('consulta'); setHoverModulo(null); }} style={estilos.itemSubmenu(hoverSubmenuItem === 'c-1')}>🔍 Consulta Compras</div>
                   <div onMouseEnter={() => setHoverSubmenuItem('c-2')} onMouseLeave={() => setHoverSubmenuItem(null)} onClick={() => { setModuloPrincipal('compras'); setPestanaCompras('captura'); if (!idEditando) cancelarEdicion(); setHoverModulo(null); }} style={estilos.itemSubmenu(hoverSubmenuItem === 'c-2')}>{idEditando ? `✏️ Editando #${idEditando}` : '➕ Captura Compra / Cotización'}</div>
                   <div onMouseEnter={() => setHoverSubmenuItem('c-3')} onMouseLeave={() => setHoverSubmenuItem(null)} onClick={() => { setModuloPrincipal('compras'); setPestanaCompras('clientes'); setHoverModulo(null); }} style={estilos.itemSubmenu(hoverSubmenuItem === 'c-3')}>🏢 Clientes & Contactos</div>
-                  <div onMouseEnter={() => setHoverSubmenuItem('c-4')} onMouseLeave={() => setHoverSubmenuItem(null)} onClick={() => { setModuloPrincipal('compras'); setPestanaCompras('ubicaciones'); setHoverModulo(null); }} style={estilos.itemSubmenu(hoverSubmenuItem === 'c-4')}>📍 Ubicaciones</div>
+                  
                   <div onMouseEnter={() => setHoverSubmenuItem('c-5')} onMouseLeave={() => setHoverSubmenuItem(null)} onClick={() => { setModuloPrincipal('compras'); setPestanaCompras('proyectos'); setHoverModulo(null); }} style={estilos.itemSubmenu(hoverSubmenuItem === 'c-5')}>📁 Proyectos</div>
                 </div>
               )}
@@ -297,10 +331,16 @@ export default function App() {
                 idEditando={idEditando} proveedor={proveedor} setProveedor={setProveedor}
                 costo={costo} setCosto={setCosto} categoria={categoria} setCategoria={setCategoria}
                 producto={producto} setProducto={setProducto} proyecto={proyecto} setProyecto={setProyecto}
+                proyectoIdExterno={proyectoIdExterno} setProyectoIdExterno={setProyectoIdExterno}
                 precioUnitario={precioUnitario} setPrecioUnitario={setPrecioUnitario} cantidad={cantidad} setCantidad={setCantidad}
                 fechaCompra={fechaCompra} setFechaCompra={setFechaCompra} estatus={estatus} setEstatus={setEstatus}
+                
+                material={material} setMaterial={setMaterial}
+                notas={notas} setNotas={setNotas}
+
                 setArchivoSeleccionado={setArchivoSeleccionado} guardando={guardando} manejarEnvio={manejarEnvio}
                 cancelarEdicion={() => { cancelarEdicion(); setPestanaCompras('consulta'); }}
+                manejarCancelarRegistro={manejarCancelarRegistro}
                 proveedoresUnicos={proveedoresUnicos} categoriasUnicas={categoriasUnicas} productosUnicos={productosUnicos} proyectosUnicos={proyectosUnicos}
               />
             )}
@@ -344,11 +384,7 @@ export default function App() {
 }
 
 const estilos = {
-  layout: { 
-    display: 'flex', 
-    minHeight: '100vh', 
-    backgroundColor: '#ffffff' 
-  },
+  layout: { display: 'flex', minHeight: '100vh', backgroundColor: '#ffffff' },
   sidebar: (abierto) => ({
     width: abierto ? '250px' : '65px',
     backgroundColor: '#1a252f',
@@ -367,74 +403,20 @@ const estilos = {
   }),
   btnHamburguesa: (enHover) => ({
     background: enHover ? 'rgba(255, 255, 255, 0.1)' : 'none',
-    border: 'none', 
-    color: 'white', 
-    fontSize: '24px', 
-    cursor: 'pointer', 
-    padding: '15px 20px', 
-    textAlign: 'left',
-    transition: 'background 0.2s',
-    display: 'flex',
-    alignItems: 'center'
+    border: 'none', color: 'white', fontSize: '24px', cursor: 'pointer', padding: '15px 20px', textAlign: 'left', display: 'flex', alignItems: 'center'
   }),
   itemMenu: (enHover) => ({
-    padding: '15px 20px',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '15px',
-    backgroundColor: enHover ? '#007bff' : 'transparent',
-    borderLeft: enHover ? '4px solid #66b0ff' : '4px solid transparent',
-    transition: 'all 0.2s',
-    whiteSpace: 'nowrap',
-    fontWeight: enHover ? 'bold' : 'normal',
-    fontSize: '16px'
+    padding: '15px 20px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '15px', backgroundColor: enHover ? '#007bff' : 'transparent', borderLeft: enHover ? '4px solid #66b0ff' : '4px solid transparent', transition: 'all 0.2s', whiteSpace: 'nowrap', fontWeight: enHover ? 'bold' : 'normal', fontSize: '16px'
   }),
-  iconoMenu: {
-    fontSize: '20px',
-    minWidth: '25px',
-    textAlign: 'center'
-  },
+  iconoMenu: { fontSize: '20px', minWidth: '25px', textAlign: 'center' },
   submenuFlotante: {
-    position: 'absolute',
-    left: '100%',
-    top: 0,
-    backgroundColor: '#243342',
-    boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
-    borderRadius: '0 8px 8px 0',
-    padding: '6px 0',
-    minWidth: '290px',
-    zIndex: 2000,
-    border: '1px solid rgba(255, 255, 255, 0.1)',
-    borderLeft: 'none'
+    position: 'absolute', left: '100%', top: 0, backgroundColor: '#243342', boxShadow: '0 8px 24px rgba(0,0,0,0.3)', borderRadius: '0 8px 8px 0', padding: '6px 0', minWidth: '290px', zIndex: 2000, border: '1px solid rgba(255, 255, 255, 0.1)', borderLeft: 'none'
   },
-  submenuTitulo: {
-    padding: '8px 16px',
-    fontSize: '11px',
-    fontWeight: 'bold',
-    textTransform: 'uppercase',
-    color: '#8da2b5',
-    borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-    marginBottom: '4px'
-  },
+  submenuTitulo: { padding: '8px 16px', fontSize: '11px', fontWeight: 'bold', textTransform: 'uppercase', color: '#8da2b5', borderBottom: '1px solid rgba(255, 255, 255, 0.1)', marginBottom: '4px' },
   itemSubmenu: (enHover) => ({
-    padding: '10px 16px',
-    fontSize: '13px',
-    cursor: 'pointer',
-    color: enHover ? '#ffffff' : '#cfd8dc',
-    backgroundColor: enHover ? '#007bff' : 'transparent',
-    fontWeight: enHover ? 'bold' : 'normal',
-    display: 'flex',
-    alignItems: 'center',
-    transition: 'background 0.15s ease, color 0.15s ease',
-    whiteSpace: 'nowrap'
+    padding: '10px 16px', fontSize: '13px', cursor: 'pointer', color: enHover ? '#ffffff' : '#cfd8dc', backgroundColor: enHover ? '#007bff' : 'transparent', fontWeight: enHover ? 'bold' : 'normal', display: 'flex', alignItems: 'center', whiteSpace: 'nowrap'
   }),
   contenidoPrincipal: (menuAbierto) => ({
-    marginLeft: menuAbierto ? '250px' : '65px',
-    padding: '15px 20px',
-    width: menuAbierto ? 'calc(100% - 250px)' : 'calc(100% - 65px)',
-    transition: 'margin-left 0.3s ease, width 0.3s ease',
-    fontFamily: 'Segoe UI, sans-serif',
-    boxSizing: 'border-box'
+    marginLeft: menuAbierto ? '250px' : '65px', padding: '15px 20px', width: menuAbierto ? 'calc(100% - 250px)' : 'calc(100% - 65px)', transition: 'margin-left 0.3s ease, width 0.3s ease', fontFamily: 'Segoe UI, sans-serif', boxSizing: 'border-box'
   })
 }

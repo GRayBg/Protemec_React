@@ -1,9 +1,19 @@
 import { useState } from 'react'
 
 export default function GestionClientes({ clientes, ubicaciones, contactos, API_URL, recargarDatos }) {
+  const [subPestana, setSubPestana] = useState('clientes')
+
   // Estado para alta de cliente
   const [nombreCliente, setNombreCliente] = useState('')
   const [rfc, setRfc] = useState('')
+  const [guardandoCliente, setGuardandoCliente] = useState(false)
+
+  // Estado para alta de ubicación
+  const [clienteUbicacionID, setClienteUbicacionID] = useState('')
+  const [nombreUbicacion, setNombreUbicacion] = useState('')
+  const [direccion, setDireccion] = useState('')
+  const [ciudad, setCiudad] = useState('')
+  const [guardandoUbicacion, setGuardandoUbicacion] = useState(false)
 
   // Estado para alta de contacto
   const [clienteContactoID, setClienteContactoID] = useState('')
@@ -12,11 +22,8 @@ export default function GestionClientes({ clientes, ubicaciones, contactos, API_
   const [puesto, setPuesto] = useState('')
   const [telefono, setTelefono] = useState('')
   const [email, setEmail] = useState('')
-
-  const [guardandoCliente, setGuardandoCliente] = useState(false)
   const [guardandoContacto, setGuardandoContacto] = useState(false)
 
-  // Filtrar ubicaciones según el cliente seleccionado para el contacto
   const ubicacionesDelCliente = ubicaciones.filter(
     u => String(u.ClienteID) === String(clienteContactoID)
   )
@@ -33,10 +40,37 @@ export default function GestionClientes({ clientes, ubicaciones, contactos, API_
       if (!res.ok) throw new Error('Error al registrar cliente')
       setNombreCliente(''); setRfc('')
       recargarDatos()
+      alert('¡Cliente registrado con éxito!')
     } catch (err) {
       alert(err.message)
     } finally {
       setGuardandoCliente(false)
+    }
+  }
+
+  const guardarUbicacion = async (e) => {
+    e.preventDefault()
+    if (!clienteUbicacionID) return alert('Debes seleccionar un cliente.')
+    setGuardandoUbicacion(true)
+    try {
+      const res = await fetch(`${API_URL}/api/ubicaciones`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clienteID: clienteUbicacionID,
+          nombreUbicacion,
+          direccion,
+          ciudad
+        })
+      })
+      if (!res.ok) throw new Error('Error al registrar la ubicación')
+      setClienteUbicacionID(''); setNombreUbicacion(''); setDireccion(''); setCiudad('')
+      recargarDatos()
+      alert('¡Ubicación registrada con éxito!')
+    } catch (err) {
+      alert(err.message)
+    } finally {
+      setGuardandoUbicacion(false)
     }
   }
 
@@ -58,6 +92,7 @@ export default function GestionClientes({ clientes, ubicaciones, contactos, API_
       setClienteContactoID(''); setUbicacionContactoID(''); setNombreContacto('')
       setPuesto(''); setTelefono(''); setEmail('')
       recargarDatos()
+      alert('¡Contacto registrado con éxito!')
     } catch (err) {
       alert(err.message)
     } finally {
@@ -66,108 +101,219 @@ export default function GestionClientes({ clientes, ubicaciones, contactos, API_
   }
 
   return (
-    <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
-      {/* Formularios */}
-      <div style={{ flex: '1', minWidth: '320px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-        
-        {/* Form 1: Alta Cliente */}
-        <form onSubmit={guardarCliente} style={estilos.formulario}>
-          <h3 style={{ marginTop: 0 }}>➕ Alta de Cliente</h3>
-          <input type="text" placeholder="Nombre de Cliente / Empresa" value={nombreCliente} onChange={e => setNombreCliente(e.target.value)} required style={estilos.input} />
-          <input type="text" placeholder="RFC / Tax ID" value={rfc} onChange={e => setRfc(e.target.value)} style={estilos.input} />
-          <button type="submit" disabled={guardandoCliente} style={estilos.botonVerde}>
-            {guardandoCliente ? 'Guardando...' : '💾 Registrar Cliente'}
-          </button>
-        </form>
-
-        {/* Form 2: Alta Contacto */}
-        <form onSubmit={guardarContacto} style={estilos.formulario}>
-          <h3 style={{ marginTop: 0 }}>👤 Agregar Contacto a Cliente/Ubicación</h3>
-          
-          <select value={clienteContactoID} onChange={e => { setClienteContactoID(e.target.value); setUbicacionContactoID(''); }} required style={estilos.input}>
-            <option value="">-- 1. Selecciona Cliente --</option>
-            {clientes.map(c => <option key={c.ClienteID} value={c.ClienteID}>{c.NombreCliente}</option>)}
-          </select>
-
-          <select value={ubicacionContactoID} onChange={e => setUbicacionContactoID(e.target.value)} disabled={!clienteContactoID} required style={estilos.input}>
-            <option value="">
-              {!clienteContactoID ? '-- Primero selecciona un cliente --' : ubicacionesDelCliente.length === 0 ? '-- Sin ubicaciones registradas --' : '-- 2. Selecciona Ubicación --'}
-            </option>
-            {ubicacionesDelCliente.map(u => (
-              <option key={u.UbicacionID} value={u.UbicacionID}>{u.NombreUbicacion}</option>
-            ))}
-          </select>
-
-          <input type="text" placeholder="Nombre del Contacto" value={nombreContacto} onChange={e => setNombreContacto(e.target.value)} required style={estilos.input} />
-          <input type="text" placeholder="Puesto / Área" value={puesto} onChange={e => setPuesto(e.target.value)} style={estilos.input} />
-          <input type="text" placeholder="Teléfono" value={telefono} onChange={e => setTelefono(e.target.value)} style={estilos.input} />
-          <input type="email" placeholder="Correo Electrónico" value={email} onChange={e => setEmail(e.target.value)} style={estilos.input} />
-
-          <button type="submit" disabled={guardandoContacto} style={estilos.botonAzul}>
-            {guardandoContacto ? 'Guardando...' : '💾 Registrar Contacto'}
-          </button>
-        </form>
+    <div style={{ width: '100%', boxSizing: 'border-box' }}>
+      
+      {/* PESTAÑAS DE NAVEGACIÓN SUPERIOR */}
+      <div style={estilos.contenedorTabs}>
+        <button onClick={() => setSubPestana('clientes')} style={estilos.tabBoton(subPestana === 'clientes')}>
+          🏢 Catálogo de Clientes ({clientes.length})
+        </button>
+        <button onClick={() => setSubPestana('ubicaciones')} style={estilos.tabBoton(subPestana === 'ubicaciones')}>
+          📍 Catálogo de Ubicaciones ({ubicaciones.length})
+        </button>
+        <button onClick={() => setSubPestana('contactos')} style={estilos.tabBoton(subPestana === 'contactos')}>
+          📇 Directorio de Contactos ({contactos.length})
+        </button>
       </div>
 
-      {/* Tablas de Consulta */}
-      <div style={{ flex: '2', minWidth: '400px', display: 'flex', flexDirection: 'column', gap: '25px' }}>
-        <div>
-          <h3>🏢 Catálogo de Clientes</h3>
-          <table style={estilos.tabla}>
-            <thead>
-              <tr style={estilos.encabezado}><th style={estilos.th}>ID</th><th style={estilos.th}>Cliente</th><th style={estilos.th}>RFC</th></tr>
-            </thead>
-            <tbody>
-              {clientes.map(c => (
-                <tr key={c.ClienteID} style={{ borderBottom: '1px solid #ddd' }}>
-                  <td style={estilos.td}>{c.ClienteID}</td>
-                  <td style={estilos.td}><strong>{c.NombreCliente}</strong></td>
-                  <td style={estilos.td}>{c.RFC_TaxID || '-'}</td>
+      {/* VISTA 1: CLIENTES */}
+      {subPestana === 'clientes' && (
+        <div style={estilos.gridModulo}>
+          <form onSubmit={guardarCliente} style={estilos.formulario}>
+            <h3 style={{ marginTop: 0, color: '#0f172a', fontSize: '15px' }}>➕ Alta de Cliente</h3>
+            <label style={estilos.label}>Nombre de Cliente / Empresa:</label>
+            <input type="text" placeholder="Ej. Empresa SA de CV" value={nombreCliente} onChange={e => setNombreCliente(e.target.value)} required style={estilos.input} />
+            <label style={estilos.label}>RFC / Tax ID:</label>
+            <input type="text" placeholder="Ej. XAXX010101000" value={rfc} onChange={e => setRfc(e.target.value)} style={estilos.input} />
+            <button type="submit" disabled={guardandoCliente} style={estilos.botonVerde}>
+              {guardandoCliente ? 'Guardando...' : '💾 Registrar Cliente'}
+            </button>
+          </form>
+
+          <div style={estilos.tarjetaTabla}>
+            <h3 style={{ marginTop: 0, color: '#0f172a', fontSize: '15px' }}>🏢 Listado de Clientes</h3>
+            <table style={estilos.tabla}>
+              <thead>
+                <tr style={estilos.encabezado}><th style={estilos.th}>ID</th><th style={estilos.th}>Cliente</th><th style={estilos.th}>RFC</th></tr>
+              </thead>
+              <tbody>
+                {clientes.length === 0 ? (
+                  <tr><td colSpan="3" style={estilos.celdaVacia}>No hay clientes registrados.</td></tr>
+                ) : (
+                  clientes.map(c => (
+                    <tr key={c.ClienteID} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={stylesId(estilos.td)}>#{c.ClienteID}</td>
+                      <td style={{ ...estilos.td, fontWeight: '700', color: '#0f172a' }}>{c.NombreCliente}</td>
+                      <td style={{ ...estilos.td, color: '#475569', fontFamily: 'Consolas, monospace' }}>{c.RFC_TaxID || '—'}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* VISTA 2: UBICACIONES */}
+      {subPestana === 'ubicaciones' && (
+        <div style={estilos.gridModulo}>
+          <form onSubmit={guardarUbicacion} style={estilos.formulario}>
+            <h3 style={{ marginTop: 0, color: '#0f172a', fontSize: '15px' }}>➕ Registrar Ubicación</h3>
+            <label style={estilos.label}>Seleccionar Cliente:</label>
+            <select value={clienteUbicacionID} onChange={e => setClienteUbicacionID(e.target.value)} required style={estilos.input}>
+              <option value="">-- Selecciona Cliente --</option>
+              {clientes.map(c => <option key={c.ClienteID} value={c.ClienteID}>{c.NombreCliente}</option>)}
+            </select>
+            <label style={estilos.label}>Nombre / Descripción de Ubicación:</label>
+            <input type="text" placeholder="Ej. Planta Principal o Bodega 2" value={nombreUbicacion} onChange={e => setNombreUbicacion(e.target.value)} required style={estilos.input} />
+            <label style={estilos.label}>Dirección:</label>
+            <input type="text" placeholder="Calle y número..." value={direccion} onChange={e => setDireccion(e.target.value)} style={estilos.input} />
+            <label style={estilos.label}>Ciudad:</label>
+            <input type="text" placeholder="Ciudad..." value={ciudad} onChange={e => setCiudad(e.target.value)} style={estilos.input} />
+            <button type="submit" disabled={guardandoUbicacion} style={estilos.botonAzul}>
+              {guardandoUbicacion ? 'Guardando...' : '💾 Registrar Ubicación'}
+            </button>
+          </form>
+
+          <div style={estilos.tarjetaTabla}>
+            <h3 style={{ marginTop: 0, color: '#0f172a', fontSize: '15px' }}>📍 Listado de Ubicaciones</h3>
+            <table style={estilos.tabla}>
+              <thead>
+                <tr style={estilos.encabezado}>
+                  <th style={estilos.th}>ID</th>
+                  <th style={estilos.th}>Cliente</th>
+                  <th style={estilos.th}>Ubicación</th>
+                  <th style={estilos.th}>Dirección</th>
+                  <th style={estilos.th}>Ciudad</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {ubicaciones.length === 0 ? (
+                  <tr><td colSpan="5" style={estilos.celdaVacia}>No hay ubicaciones registradas.</td></tr>
+                ) : (
+                  ubicaciones.map(u => {
+                    const clienteObj = clientes.find(c => c.ClienteID === u.ClienteID)
+                    return (
+                      <tr key={u.UbicacionID} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={stylesId(estilos.td)}>#{u.UbicacionID}</td>
+                        <td style={{ ...estilos.td, fontWeight: '700' }}>{clienteObj?.NombreCliente || '—'}</td>
+                        <td style={{ ...estilos.td, color: '#0f172a', fontWeight: '600' }}>{u.NombreUbicacion}</td>
+                        <td style={{ ...estilos.td, color: '#475569', fontSize: '12px' }}>{u.Direccion || '—'}</td>
+                        <td style={{ ...estilos.td, color: '#475569' }}>{u.Ciudad || '—'}</td>
+                      </tr>
+                    )
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
+      )}
 
-        <div>
-          <h3>📇 Contactos Registrados</h3>
-          <table style={estilos.tabla}>
-            <thead>
-              <tr style={estilos.encabezado}>
-                <th style={estilos.th}>Cliente</th>
-                <th style={estilos.th}>Ubicación</th>
-                <th style={estilos.th}>Contacto</th>
-                <th style={estilos.th}>Teléfono / Email</th>
-              </tr>
-            </thead>
-            <tbody>
-              {contactos.length === 0 ? (
-                <tr><td colSpan="4" style={{ padding: '10px', textAlign: 'center', color: '#777' }}>No hay contactos asociados.</td></tr>
-              ) : (
-                contactos.map(ct => (
-                  <tr key={ct.ContactoID} style={{ borderBottom: '1px solid #ddd' }}>
-                    <td style={estilos.td}><strong>{ct.NombreCliente}</strong></td>
-                    <td style={estilos.td}>{ct.NombreUbicacion}</td>
-                    <td style={estilos.td}>{ct.NombreContacto} <small>({ct.Puesto || 'S/P'})</small></td>
-                    <td style={estilos.td}>{ct.Telefono || '-'} / {ct.Email || '-'}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+      {/* VISTA 3: CONTACTOS */}
+      {subPestana === 'contactos' && (
+        <div style={estilos.gridModulo}>
+          <form onSubmit={guardarContacto} style={estilos.formulario}>
+            <h3 style={{ marginTop: 0, color: '#0f172a', fontSize: '15px' }}>👤 Agregar Contacto</h3>
+            
+            <label style={estilos.label}>Seleccionar Cliente:</label>
+            <select value={clienteContactoID} onChange={e => { setClienteContactoID(e.target.value); setUbicacionContactoID(''); }} required style={estilos.input}>
+              <option value="">-- 1. Selecciona Cliente --</option>
+              {clientes.map(c => <option key={c.ClienteID} value={c.ClienteID}>{c.NombreCliente}</option>)}
+            </select>
+
+            <label style={estilos.label}>Seleccionar Ubicación:</label>
+            <select value={ubicacionContactoID} onChange={e => setUbicacionContactoID(e.target.value)} disabled={!clienteContactoID} required style={estilos.input}>
+              <option value="">
+                {!clienteContactoID ? '-- Primero selecciona cliente --' : ubicacionesDelCliente.length === 0 ? '-- Sin ubicaciones --' : '-- 2. Selecciona Ubicación --'}
+              </option>
+              {ubicacionesDelCliente.map(u => (
+                <option key={u.UbicacionID} value={u.UbicacionID}>{u.NombreUbicacion}</option>
+              ))}
+            </select>
+
+            <label style={estilos.label}>Nombre del Contacto:</label>
+            <input type="text" placeholder="Ej. Juan Pérez" value={nombreContacto} onChange={e => setNombreContacto(e.target.value)} required style={estilos.input} />
+            <label style={estilos.label}>Puesto / Área:</label>
+            <input type="text" placeholder="Ej. Gerente" value={puesto} onChange={e => setPuesto(e.target.value)} style={estilos.input} />
+            <label style={estilos.label}>Teléfono:</label>
+            <input type="text" placeholder="Teléfono..." value={telefono} onChange={e => setTelefono(e.target.value)} style={estilos.input} />
+            <label style={estilos.label}>Correo Electrónico:</label>
+            <input type="email" placeholder="Correo..." value={email} onChange={e => setEmail(e.target.value)} style={estilos.input} />
+
+            <button type="submit" disabled={guardandoContacto} style={estilos.botonAzul}>
+              {guardandoContacto ? 'Guardando...' : '💾 Registrar Contacto'}
+            </button>
+          </form>
+
+          <div style={estilos.tarjetaTabla}>
+            <h3 style={{ marginTop: 0, color: '#0f172a', fontSize: '15px' }}>📇 Directorio de Contactos</h3>
+            <table style={estilos.tabla}>
+              <thead>
+                <tr style={estilos.encabezado}>
+                  <th style={estilos.th}>Cliente</th>
+                  <th style={estilos.th}>Ubicación</th>
+                  <th style={estilos.th}>Contacto</th>
+                  <th style={estilos.th}>Teléfono / Email</th>
+                </tr>
+              </thead>
+              <tbody>
+                {contactos.length === 0 ? (
+                  <tr><td colSpan="4" style={estilos.celdaVacia}>No hay contactos asociados.</td></tr>
+                ) : (
+                  contactos.map(ct => (
+                    <tr key={ct.ContactoID} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ ...estilos.td, fontWeight: '700', color: '#0f172a' }}>{ct.NombreCliente}</td>
+                      <td style={{ ...estilos.td, color: '#475569' }}>{ct.NombreUbicacion}</td>
+                      <td style={estilos.td}>
+                        <div style={{ fontWeight: '700', color: '#1e293b' }}>{ct.NombreContacto}</div>
+                        <div style={{ fontSize: '11px', color: '#64748b' }}>{ct.Puesto || 'S/P'}</div>
+                      </td>
+                      <td style={estilos.td}>
+                        <div style={{ fontFamily: 'Consolas, monospace', color: '#0f172a' }}>📞 {ct.Telefono || '—'}</div>
+                        <div style={{ fontSize: '11px', color: '#2563eb' }}>✉️ {ct.Email || '—'}</div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
+
     </div>
   )
 }
 
+function stylesId(base) {
+  return { ...base, textAlign: 'center', fontFamily: 'Consolas, monospace', fontWeight: '700' }
+}
+
 const estilos = {
-  formulario: { backgroundColor: '#f8f9fa', padding: '15px', borderRadius: '8px', border: '1px solid #e3e6f0' },
-  input: { width: '100%', padding: '8px', marginBottom: '10px', borderRadius: '4px', border: '1px solid #ccc', boxSizing: 'border-box' },
-  botonVerde: { backgroundColor: '#28a745', color: '#fff', border: 'none', padding: '10px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', width: '100%' },
-  botonAzul: { backgroundColor: '#007bff', color: '#fff', border: 'none', padding: '10px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', width: '100%' },
+  contenedorTabs: { display: 'flex', gap: '10px', marginBottom: '20px', borderBottom: '2px solid #e2e8f0', paddingBottom: '10px' },
+  tabBoton: (activo) => ({
+    backgroundColor: activo ? '#2563eb' : '#ffffff',
+    color: activo ? '#ffffff' : '#475569',
+    border: '1px solid #cbd5e1',
+    padding: '10px 18px',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    fontWeight: '700',
+    fontSize: '13px',
+    boxShadow: activo ? '0 4px 6px -1px rgba(37, 99, 235, 0.2)' : 'none',
+    transition: 'all 0.2s'
+  }),
+  gridModulo: { display: 'grid', gridTemplateColumns: '350px 1fr', gap: '20px', alignItems: 'start' },
+  formulario: { backgroundColor: '#ffffff', padding: '20px', borderRadius: '10px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)' },
+  tarjetaTabla: { backgroundColor: '#ffffff', padding: '20px', borderRadius: '10px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)' },
+  label: { fontSize: '11px', fontWeight: '700', color: '#64748b', display: 'block', marginBottom: '4px', textTransform: 'uppercase' },
+  input: { width: '100%', padding: '9px 10px', marginBottom: '12px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box', fontSize: '13px', backgroundColor: '#fff', color: '#1e293b' },
+  botonVerde: { backgroundColor: '#10b981', color: '#fff', border: 'none', padding: '10px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', width: '100%' },
+  botonAzul: { backgroundColor: '#2563eb', color: '#fff', border: 'none', padding: '10px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', width: '100%' },
   tabla: { width: '100%', borderCollapse: 'collapse', fontSize: '13px' },
-  encabezado: { backgroundColor: '#e9ecef', textAlign: 'left' },
-  th: { padding: '8px' },
-  td: { padding: '8px' }
+  encabezado: { backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0', textAlign: 'left' },
+  th: { padding: '12px 10px', color: '#334155', fontWeight: '700', fontSize: '11px', textTransform: 'uppercase' },
+  td: { padding: '12px 10px', verticalAlign: 'middle', color: '#1e293b' },
+  celdaVacia: { textAlign: 'center', padding: '30px', color: '#94a3b8', fontStyle: 'italic' }
 }
