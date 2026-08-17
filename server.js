@@ -133,12 +133,11 @@ app.post('/api/ubicaciones', async (req, res) => {
 })
 
 // -------------------------------------------------------------
-// 4. PROYECTOS (Actualizado con Soporte para ID Externo, Estatus y Edición PUT)
+// 4. PROYECTOS
 // -------------------------------------------------------------
 app.get('/api/proyectos', async (req, res) => {
   try { 
     let pool = await sql.connect(config)
-    // Se realiza un LEFT JOIN para traer opcionalmente el nombre del cliente si está vinculado por ubicación
     let r = await pool.request().query(`
       SELECT p.*, u.NombreUbicacion, c.NombreCliente, c.ClienteID 
       FROM Proyectos p 
@@ -321,7 +320,7 @@ app.put('/api/compras/cancelar/:id', async (req, res) => {
 })
 
 // -------------------------------------------------------------
-// 6. INGENIERÍA
+// 6. INGENIERÍA (Alta, Consulta y Edición)
 // -------------------------------------------------------------
 app.get('/api/ingenieria', async (req, res) => {
   try { 
@@ -332,15 +331,66 @@ app.get('/api/ingenieria', async (req, res) => {
 })
 
 app.post('/api/ingenieria', uploadIngenieria, async (req, res) => {
-  const { nombre, proyecto, cantidadRequerida } = req.body
+  const { nombre, proyecto, tipoNivel, padreID, cantidadRequerida } = req.body
+  
   let urlGLB = req.files?.archivoGlb ? await subirABlobYObtenerSAS(req.files.archivoGlb[0]) : null
+  let urlPDF = req.files?.archivoPdf ? await subirABlobYObtenerSAS(req.files.archivoPdf[0]) : null
+
   try {
     let pool = await sql.connect(config)
     await pool.request()
-      .input('N', nombre).input('P', proyecto).input('CR', cantidadRequerida).input('GLB', urlGLB)
-      .query('INSERT INTO Ingenieria (Nombre, Proyecto, CantidadRequerida, UrlGLB, EstatusAvance, FechaCreacion) VALUES (@N, @P, @CR, @GLB, \'Pendiente\', GETDATE())')
+      .input('N', sql.NVarChar, nombre || '')
+      .input('P', sql.NVarChar, proyecto || '')
+      .input('TN', sql.VarChar, tipoNivel || 'Ensamble')
+      .input('PID', padreID && padreID !== '' ? parseInt(padreID, 10) : null)
+      .input('CR', sql.Int, parseInt(cantidadRequerida, 10) || 1)
+      .input('GLB', sql.VarChar, urlGLB)
+      .input('PDF', sql.VarChar, urlPDF)
+      .query(`
+        INSERT INTO Ingenieria 
+          (Nombre, Proyecto, TipoNivel, PadreID, CantidadRequerida, UrlGLB, UrlPDF, EstatusAvance, FechaCreacion) 
+        VALUES 
+          (@N, @P, @TN, @PID, @CR, @GLB, @PDF, 'Pendiente', GETDATE())
+      `)
     res.json({ mensaje: 'Guardado' })
-  } catch (e) { res.status(500).send(e.message) }
+  } catch (e) { 
+    res.status(500).send(e.message) 
+  }
+})
+
+app.put('/api/ingenieria/:id', uploadIngenieria, async (req, res) => {
+  const { id } = req.params
+  const { nombre, proyecto, tipoNivel, padreID, cantidadRequerida, urlGlbActual, urlPdfActual } = req.body
+  
+  let urlGLB = req.files?.archivoGlb ? await subirABlobYObtenerSAS(req.files.archivoGlb[0]) : (urlGlbActual || null)
+  let urlPDF = req.files?.archivoPdf ? await subirABlobYObtenerSAS(req.files.archivoPdf[0]) : (urlPdfActual || null)
+
+  try {
+    let pool = await sql.connect(config)
+    await pool.request()
+      .input('ID', parseInt(id, 10))
+      .input('N', sql.NVarChar, nombre || '')
+      .input('P', sql.NVarChar, proyecto || '')
+      .input('TN', sql.VarChar, tipoNivel || 'Ensamble')
+      .input('PID', padreID && padreID !== '' ? parseInt(padreID, 10) : null)
+      .input('CR', sql.Int, parseInt(cantidadRequerida, 10) || 1)
+      .input('GLB', sql.VarChar, urlGLB)
+      .input('PDF', sql.VarChar, urlPDF)
+      .query(`
+        UPDATE Ingenieria 
+        SET Nombre = @N, 
+            Proyecto = @P, 
+            TipoNivel = @TN, 
+            PadreID = @PID, 
+            CantidadRequerida = @CR, 
+            UrlGLB = @GLB, 
+            UrlPDF = @PDF 
+        WHERE ID = @ID
+      `)
+    res.json({ mensaje: 'Actualizado correctamente' })
+  } catch (e) { 
+    res.status(500).send(e.message) 
+  }
 })
 
 // -------------------------------------------------------------

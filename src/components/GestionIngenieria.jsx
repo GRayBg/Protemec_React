@@ -13,7 +13,8 @@ export default function GestionIngenieria({
   const [proyectoFiltro, setProyectoFiltro] = useState('')
   const [busqueda, setBusqueda] = useState('')
 
-  // Formulario
+  // Formulario y Modo Edición
+  const [elementoEditando, setElementoEditando] = useState(null)
   const [nombre, setNombre] = useState('')
   const [proyectoForm, setProyectoForm] = useState('')
   const [tipoNivel, setTipoNivel] = useState('Ensamble')
@@ -31,6 +32,19 @@ export default function GestionIngenieria({
     setFilasAbiertas(prev => ({ ...prev, [id]: !prev[id] }))
   }
 
+  // Cargar datos en el formulario para editar
+  const iniciarEdicion = (item) => {
+    setElementoEditando(item.ID)
+    setNombre(item.Nombre || '')
+    setProyectoForm(item.Proyecto || '')
+    setTipoNivel(item.TipoNivel || 'Ensamble')
+    setPadreID(item.PadreID || '')
+    setCantidadRequerida(item.CantidadRequerida || 1)
+    setArchivoGlb(null)
+    setArchivoPdf(null)
+    if (setPestanaIngenieria) setPestanaIngenieria('nuevo')
+  }
+
   // Filtrado de elementos por proyecto y texto
   const disenosFiltrados = disenos.filter(d => {
     const coincideProyecto = proyectoFiltro ? d.Proyecto === proyectoFiltro : true
@@ -38,13 +52,11 @@ export default function GestionIngenieria({
     return coincideProyecto && coincideTexto
   })
 
-  // Padres disponibles flexibles
-  const padresDisponiblesParaSubensamble = disenos.filter(
-    d => (d.TipoNivel === 'Ensamble' || d.TipoNivel === 'Subensamble') && (!proyectoForm || d.Proyecto === proyectoForm)
-  )
-
-  const padresDisponiblesParaPieza = disenos.filter(
-    d => (d.TipoNivel === 'Ensamble' || d.TipoNivel === 'Subensamble') && (!proyectoForm || d.Proyecto === proyectoForm)
+  // Padres disponibles (evitando seleccionarse a sí mismo como padre al editar)
+  const padresDisponibles = disenos.filter(
+    d => (d.TipoNivel === 'Ensamble' || d.TipoNivel === 'Subensamble') && 
+         (!proyectoForm || d.Proyecto === proyectoForm) && 
+         d.ID !== elementoEditando
   )
 
   const manejarEnvio = async (e) => {
@@ -64,19 +76,40 @@ export default function GestionIngenieria({
     if (archivoGlb) formData.append('archivoGlb', archivoGlb)
     if (archivoPdf) formData.append('archivoPdf', archivoPdf)
 
+    if (elementoEditando) {
+      const itemActual = disenos.find(d => d.ID === elementoEditando)
+      if (itemActual?.UrlGLB) formData.append('urlGlbActual', itemActual.UrlGLB)
+      if (itemActual?.UrlPDF) formData.append('urlPdfActual', itemActual.UrlPDF)
+    }
+
     try {
-      const res = await fetch(`${API_URL}/api/ingenieria`, {
-        method: 'POST',
+      const urlEndpoint = elementoEditando 
+        ? `${API_URL}/api/ingenieria/${elementoEditando}` 
+        : `${API_URL}/api/ingenieria`
+      
+      const metodo = elementoEditando ? 'PUT' : 'POST'
+
+      const res = await fetch(urlEndpoint, {
+        method: metodo,
         body: formData,
       })
 
-      if (!res.ok) throw new Error('Error al guardar en la base de datos')
+      let mensajeDetallado = 'Error al guardar en la base de datos'
+      if (!res.ok) {
+        try {
+          const errorBody = await res.text()
+          if (errorBody) mensajeDetallado = errorBody
+        } catch (e) {}
+        throw new Error(mensajeDetallado)
+      }
 
+      // Limpiar formulario
       setNombre('')
       setPadreID('')
       setCantidadRequerida(1)
       setArchivoGlb(null)
       setArchivoPdf(null)
+      setElementoEditando(null)
 
       const inputGlb = document.getElementById('file-glb')
       const inputPdf = document.getElementById('file-pdf')
@@ -84,7 +117,7 @@ export default function GestionIngenieria({
       if (inputPdf) inputPdf.value = ''
 
       await recargarDatos()
-      alert('¡Registro guardado con éxito!')
+      alert(elementoEditando ? '¡Registro actualizado con éxito!' : '¡Registro guardado con éxito!')
       if (setPestanaIngenieria) setPestanaIngenieria('explorador')
     } catch (err) {
       alert('Error: ' + err.message)
@@ -192,6 +225,14 @@ export default function GestionIngenieria({
 
             <td style={{ padding: '8px', textAlign: 'center' }}>
               <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
+                <button 
+                  onClick={() => iniciarEdicion(item)} 
+                  title="Editar elemento"
+                  style={{ backgroundColor: '#ffc107', color: '#000', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}
+                >
+                  ✏️
+                </button>
+
                 {item.UrlGLB ? (
                   <button 
                     onClick={() => setModeloSeleccionado(item.UrlGLB)} 
@@ -358,7 +399,7 @@ export default function GestionIngenieria({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', width: '100%' }}>
       
-      {/* FILTRO SUPERIOR GENERAL (SOLO SE MUESTRA EN VISOR Y AVANCE) */}
+      {/* FILTRO SUPERIOR GENERAL */}
       {subVista !== 'nuevo' && (
         <div style={{ background: '#ffffff', padding: '12px 20px', borderRadius: '8px', border: '1px solid #e0e0e0', display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'center', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
           <div style={{ flex: '1', minWidth: '220px' }}>
@@ -396,7 +437,7 @@ export default function GestionIngenieria({
                 <thead>
                   <tr style={{ background: '#f8f9fa', textAlign: 'left', borderBottom: '2px solid #dee2e6', fontSize: '12px' }}>
                     <th style={{ padding: '8px' }}>Nombre / Elemento</th>
-                    <th style={{ padding: '8px', textAlign: 'center' }}>Ver</th>
+                    <th style={{ padding: '8px', textAlign: 'center' }}>Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -479,11 +520,11 @@ export default function GestionIngenieria({
         </div>
       )}
 
-      {/* PESTAÑA 3: FORMULARIO DE REGISTRO */}
+      {/* PESTAÑA 3: FORMULARIO DE REGISTRO / EDICIÓN */}
       {subVista === 'nuevo' && (
         <div style={{ background: '#ffffff', padding: '25px', borderRadius: '8px', border: '1px solid #e0e0e0', maxWidth: '800px', margin: '0 auto', width: '100%' }}>
-          <h3 style={{ marginTop: 0, color: '#333', borderBottom: '2px solid #28a745', paddingBottom: '10px' }}>
-            ➕ Registrar Nuevo Componente / Pieza
+          <h3 style={{ marginTop: 0, color: '#333', borderBottom: `2px solid ${elementoEditando ? '#ffc107' : '#28a745'}`, paddingBottom: '10px' }}>
+            {elementoEditando ? '✏️ Modificar Componente / Pieza' : '➕ Registrar Nuevo Componente / Pieza'}
           </h3>
           
           <form onSubmit={manejarEnvio} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '18px', marginTop: '15px' }}>
@@ -506,25 +547,13 @@ export default function GestionIngenieria({
               </select>
             </div>
 
-            {tipoNivel === 'Subensamble' && (
+            {(tipoNivel === 'Subensamble' || tipoNivel === 'Pieza') && (
               <div>
                 <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px', fontSize: '13px' }}>Elemento Padre (Ensamble o Sub-ensamble):*</label>
                 <select value={padreID} onChange={(e) => setPadreID(e.target.value)} required style={{ width: '100%', padding: '9px', borderRadius: '4px', border: '1px solid #ccc' }}>
                   <option value="">-- Pertenece a --</option>
-                  {padresDisponiblesParaSubensamble.map(e => (
+                  {padresDisponibles.map(e => (
                     <option key={e.ID} value={e.ID}>[{e.TipoNivel}] {e.Nombre} ({e.Proyecto})</option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {tipoNivel === 'Pieza' && (
-              <div>
-                <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '5px', fontSize: '13px' }}>Elemento Padre (Ensamble o Sub-ensamble):*</label>
-                <select value={padreID} onChange={(e) => setPadreID(e.target.value)} required style={{ width: '100%', padding: '9px', borderRadius: '4px', border: '1px solid #ccc' }}>
-                  <option value="">-- Pertenece a --</option>
-                  {padresDisponiblesParaPieza.map(s => (
-                    <option key={s.ID} value={s.ID}>[{s.TipoNivel}] {s.Nombre} ({s.Proyecto})</option>
                   ))}
                 </select>
               </div>
@@ -551,10 +580,10 @@ export default function GestionIngenieria({
             </div>
 
             <div style={{ gridColumn: '1 / -1', marginTop: '10px', display: 'flex', gap: '10px' }}>
-              <button type="submit" disabled={guardando} style={{ backgroundColor: '#28a745', color: '#fff', border: 'none', padding: '12px 24px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', flex: 1 }}>
-                {guardando ? '⌛ Guardando y Subiendo Archivos...' : '💾 Guardar Elemento'}
+              <button type="submit" disabled={guardando} style={{ backgroundColor: elementoEditando ? '#ffc107' : '#28a745', color: elementoEditando ? '#000' : '##fff', border: 'none', padding: '12px 24px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', flex: 1 }}>
+                {guardando ? '⌛ Guardando y Subiendo Archivos...' : (elementoEditando ? '💾 Actualizar Elemento' : '💾 Guardar Elemento')}
               </button>
-              <button type="button" onClick={() => setPestanaIngenieria('explorador')} style={{ backgroundColor: '#6c757d', color: '#fff', border: 'none', padding: '12px 20px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>
+              <button type="button" onClick={() => { setElementoEditando(null); setPestanaIngenieria('explorador'); }} style={{ backgroundColor: '#6c757d', color: '#fff', border: 'none', padding: '12px 20px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>
                 Cancelar
               </button>
             </div>
