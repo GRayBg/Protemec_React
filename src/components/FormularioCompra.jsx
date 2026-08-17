@@ -7,7 +7,7 @@ export default function FormularioCompra({
   categoria, setCategoria,
   producto, setProducto,
   proyecto, setProyecto,
-  proyectoIdExterno, setProyectoIdExterno, // Nuevo estado
+  proyectoIdExterno, setProyectoIdExterno,
   precioUnitario, setPrecioUnitario,
   cantidad, setCantidad,
   fechaCompra, setFechaCompra,
@@ -22,7 +22,9 @@ export default function FormularioCompra({
   proveedoresUnicos,
   categoriasUnicas,
   productosUnicos,
-  proyectosUnicos
+  materialesUnicos,
+  proyectosUnicos,
+  proyectoIdsUnicos // <- Prop agregada para el menú de IDs externos
 }) {
   const fileInputRef = useRef(null)
   const costoConIva = costo ? (parseFloat(costo) * 1.16).toFixed(2) : ''
@@ -46,41 +48,43 @@ export default function FormularioCompra({
         {/* Proveedor */}
         <div style={{ flex: '1', minWidth: '140px' }}>
           <label style={estilos.label}>Proveedor:</label>
-          <input type="text" list="lista-proveedores" value={proveedor} onChange={e => setProveedor(e.target.value)} required placeholder="Selecciona..." style={estilos.input} />
+          <input type="text" list="lista-proveedores" autoComplete="off" value={proveedor} onChange={e => setProveedor(e.target.value)} required placeholder="Selecciona..." style={estilos.input} />
           <datalist id="lista-proveedores">{proveedoresUnicos && proveedoresUnicos.map((p, idx) => <option key={idx} value={p} />)}</datalist>
         </div>
 
-        {/* NUEVO: Proyecto ID */}
+        {/* Proyecto ID (Conectado al datalist de IDs únicos de proyectos) */}
         <div style={{ flex: '1', minWidth: '140px' }}>
           <label style={estilos.label}>Proyecto ID:</label>
-          <input type="text" value={proyectoIdExterno} onChange={e => setProyectoIdExterno(e.target.value)} placeholder="Ej. CDP002779-2" style={estilos.input} />
+          <input type="text" list="lista-proyecto-ids" autoComplete="off" value={proyectoIdExterno} onChange={e => setProyectoIdExterno(e.target.value)} placeholder="Ej. CDP002779-2" style={estilos.input} />
+          <datalist id="lista-proyecto-ids">{proyectoIdsUnicos && proyectoIdsUnicos.map((idExt, idx) => <option key={idx} value={idExt} />)}</datalist>
         </div>
 
         {/* Proyecto (Solo Nombre) */}
         <div style={{ flex: '1', minWidth: '180px' }}>
           <label style={estilos.label}>Proyecto (Nombre):</label>
-          <input type="text" list="lista-proyectos" value={proyecto} onChange={e => setProyecto(e.target.value)} placeholder="Nombre del proyecto..." style={estilos.input} />
+          <input type="text" list="lista-proyectos" autoComplete="off" value={proyecto} onChange={e => setProyecto(e.target.value)} placeholder="Nombre del proyecto..." style={estilos.input} />
           <datalist id="lista-proyectos">{proyectosUnicos && proyectosUnicos.map((p, idx) => <option key={idx} value={p} />)}</datalist>
         </div>
 
         {/* Categoría */}
         <div style={{ flex: '1', minWidth: '140px' }}>
           <label style={estilos.label}>Categoría:</label>
-          <input type="text" list="lista-categorias" value={categoria} onChange={e => setCategoria(e.target.value)} required placeholder="Selecciona..." style={estilos.input} />
+          <input type="text" list="lista-categorias" autoComplete="off" value={categoria} onChange={e => setCategoria(e.target.value)} required placeholder="Selecciona..." style={estilos.input} />
           <datalist id="lista-categorias">{categoriasUnicas && categoriasUnicas.map((c, idx) => <option key={idx} value={c} />)}</datalist>
         </div>
 
         {/* Producto */}
         <div style={{ flex: '1', minWidth: '140px' }}>
           <label style={estilos.label}>Producto:</label>
-          <input type="text" list="lista-productos" value={producto} onChange={e => setProducto(e.target.value)} required placeholder="Selecciona..." style={estilos.input} />
+          <input type="text" list="lista-productos" autoComplete="off" value={producto} onChange={e => setProducto(e.target.value)} required placeholder="Selecciona..." style={estilos.input} />
           <datalist id="lista-productos">{productosUnicos && productosUnicos.map((p, idx) => <option key={idx} value={p} />)}</datalist>
         </div>
 
         {/* Material */}
         <div style={{ flex: '1', minWidth: '140px' }}>
           <label style={estilos.label}>Material:</label>
-          <input type="text" value={material} onChange={e => setMaterial(e.target.value)} placeholder="Ej. Acero..." style={estilos.input} />
+          <input type="text" list="lista-materiales" autoComplete="off" value={material} onChange={e => setMaterial(e.target.value)} placeholder="Ej. Acero..." style={estilos.input} />
+          <datalist id="lista-materiales">{materialesUnicos && materialesUnicos.map((m, idx) => <option key={idx} value={m} />)}</datalist>
         </div>
 
         {/* Cantidad */}
@@ -118,7 +122,7 @@ export default function FormularioCompra({
         {/* Notas */}
         <div style={{ flex: '2', minWidth: '220px' }}>
           <label style={estilos.label}>Notas / Observaciones:</label>
-          <input type="text" value={notas} onChange={e => setNotas(e.target.value)} placeholder="Notas..." style={estilos.input} />
+          <input type="text" autoComplete="off" value={notas} onChange={e => setNotas(e.target.value)} placeholder="Notas..." style={estilos.input} />
         </div>
 
         {/* Archivo */}

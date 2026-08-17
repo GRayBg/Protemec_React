@@ -85,10 +85,16 @@ export default function App() {
 
   useEffect(() => { cargarTodo() }, [])
 
-  const proveedoresUnicos = [...new Set(compras.map(c => c.Proveedor || c.proveedor).filter(Boolean))]
-  const categoriasUnicas = [...new Set(compras.map(c => c.Categoria || c.categoria).filter(Boolean))]
-  const productosUnicos = [...new Set(compras.map(c => c.Producto || c.producto).filter(Boolean))]
-  const proyectosUnicos = proyectos.map(p => p.NombreProyecto)
+  // --- FILTRADO DE COMPRAS Y PROYECTOS ACTIVOS ---
+  const comprasActivas = compras.filter(c => (c.Estatus || c.estatus || 'Comprado').toLowerCase() !== 'cancelado')
+  const proveedoresUnicos = [...new Set(comprasActivas.map(c => c.Proveedor || c.proveedor).filter(Boolean))]
+  const categoriasUnicas = [...new Set(comprasActivas.map(c => c.Categoria || c.categoria).filter(Boolean))]
+  const productosUnicos = [...new Set(comprasActivas.map(c => c.Producto || c.producto).filter(Boolean))]
+  const materialesUnicos = [...new Set(comprasActivas.map(c => c.Material || c.material).filter(Boolean))]
+  
+  // Listas de la tabla de Proyectos
+  const proyectosUnicos = [...new Set(proyectos.map(p => p.NombreProyecto).filter(Boolean))]
+  const proyectoIdsUnicos = [...new Set(proyectos.map(p => p.ProyectoID_Externo).filter(Boolean))]
 
   const iniciarEdicion = (fila) => {
     const id = fila.Numero ?? fila.ID ?? fila.Id ?? fila.id
@@ -328,20 +334,30 @@ export default function App() {
             )}
             {pestanaCompras === 'captura' && (
               <FormularioCompra 
-                idEditando={idEditando} proveedor={proveedor} setProveedor={setProveedor}
-                costo={costo} setCosto={setCosto} categoria={categoria} setCategoria={setCategoria}
-                producto={producto} setProducto={setProducto} proyecto={proyecto} setProyecto={setProyecto}
+                idEditando={idEditando} 
+                proveedor={proveedor} setProveedor={setProveedor}
+                costo={costo} setCosto={setCosto} 
+                categoria={categoria} setCategoria={setCategoria}
+                producto={producto} setProducto={setProducto} 
+                proyecto={proyecto} setProyecto={setProyecto}
                 proyectoIdExterno={proyectoIdExterno} setProyectoIdExterno={setProyectoIdExterno}
-                precioUnitario={precioUnitario} setPrecioUnitario={setPrecioUnitario} cantidad={cantidad} setCantidad={setCantidad}
-                fechaCompra={fechaCompra} setFechaCompra={setFechaCompra} estatus={estatus} setEstatus={setEstatus}
-                
+                precioUnitario={precioUnitario} setPrecioUnitario={setPrecioUnitario} 
+                cantidad={cantidad} setCantidad={setCantidad}
+                fechaCompra={fechaCompra} setFechaCompra={setFechaCompra} 
+                estatus={estatus} setEstatus={setEstatus}
                 material={material} setMaterial={setMaterial}
                 notas={notas} setNotas={setNotas}
-
-                setArchivoSeleccionado={setArchivoSeleccionado} guardando={guardando} manejarEnvio={manejarEnvio}
+                setArchivoSeleccionado={setArchivoSeleccionado} 
+                guardando={guardando} 
+                manejarEnvio={manejarEnvio}
                 cancelarEdicion={() => { cancelarEdicion(); setPestanaCompras('consulta'); }}
                 manejarCancelarRegistro={manejarCancelarRegistro}
-                proveedoresUnicos={proveedoresUnicos} categoriasUnicas={categoriasUnicas} productosUnicos={productosUnicos} proyectosUnicos={proyectosUnicos}
+                proveedoresUnicos={proveedoresUnicos} 
+                categoriasUnicas={categoriasUnicas} 
+                productosUnicos={productosUnicos} 
+                materialesUnicos={materialesUnicos} 
+                proyectosUnicos={proyectosUnicos}
+                proyectoIdsUnicos={proyectoIdsUnicos}
               />
             )}
             {pestanaCompras === 'clientes' && <GestionClientes clientes={clientes} ubicaciones={ubicaciones} contactos={contactos} API_URL={API_URL} recargarDatos={cargarTodo} />}

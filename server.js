@@ -133,26 +133,62 @@ app.post('/api/ubicaciones', async (req, res) => {
 })
 
 // -------------------------------------------------------------
-// 4. PROYECTOS
+// 4. PROYECTOS (Actualizado con Soporte para ID Externo, Estatus y Edición PUT)
 // -------------------------------------------------------------
 app.get('/api/proyectos', async (req, res) => {
   try { 
     let pool = await sql.connect(config)
-    let r = await pool.request().query('SELECT * FROM Proyectos')
+    // Se realiza un LEFT JOIN para traer opcionalmente el nombre del cliente si está vinculado por ubicación
+    let r = await pool.request().query(`
+      SELECT p.*, u.NombreUbicacion, c.NombreCliente, c.ClienteID 
+      FROM Proyectos p 
+      LEFT JOIN Ubicaciones u ON p.UbicacionID = u.UbicacionID 
+      LEFT JOIN Clientes c ON u.ClienteID = c.ClienteID
+    `)
     res.json(r.recordset) 
   } catch (e) { res.status(500).send(e.message) }
 })
 
 app.post('/api/proyectos', async (req, res) => {
-  const { nombreProyecto, ubicacionID, descripcion } = req.body
+  const { nombreProyecto, proyectoIdExterno, ubicacionID, descripcion, estatus } = req.body
   try {
     let pool = await sql.connect(config)
     await pool.request()
       .input('NombreProyecto', sql.NVarChar, nombreProyecto || '')
-      .input('UbicacionID', sql.Int, parseInt(ubicacionID, 10))
+      .input('ProyectoID_Externo', sql.VarChar, proyectoIdExterno || null)
+      .input('UbicacionID', sql.Int, ubicacionID ? parseInt(ubicacionID, 10) : null)
       .input('Descripcion', sql.NVarChar, descripcion || null)
-      .query('INSERT INTO Proyectos (NombreProyecto, UbicacionID, Descripcion) VALUES (@NombreProyecto, @UbicacionID, @Descripcion)')
+      .input('Estatus', sql.VarChar, estatus || 'Activo')
+      .query(`
+        INSERT INTO Proyectos (NombreProyecto, ProyectoID_Externo, UbicacionID, Descripcion, Estatus) 
+        VALUES (@NombreProyecto, @ProyectoID_Externo, @UbicacionID, @Descripcion, @Estatus)
+      `)
     res.json({ mensaje: 'Proyecto registrado correctamente' })
+  } catch (e) { res.status(500).send(e.message) }
+})
+
+app.put('/api/proyectos/:id', async (req, res) => {
+  const { id } = req.params
+  const { nombreProyecto, proyectoIdExterno, ubicacionID, descripcion, estatus } = req.body
+  try {
+    let pool = await sql.connect(config)
+    await pool.request()
+      .input('ID', parseInt(id, 10))
+      .input('NombreProyecto', sql.NVarChar, nombreProyecto || '')
+      .input('ProyectoID_Externo', sql.VarChar, proyectoIdExterno || null)
+      .input('UbicacionID', sql.Int, ubicacionID ? parseInt(ubicacionID, 10) : null)
+      .input('Descripcion', sql.NVarChar, descripcion || null)
+      .input('Estatus', sql.VarChar, estatus || 'Activo')
+      .query(`
+        UPDATE Proyectos 
+        SET NombreProyecto = @NombreProyecto, 
+            ProyectoID_Externo = @ProyectoID_Externo, 
+            UbicacionID = @UbicacionID, 
+            Descripcion = @Descripcion, 
+            Estatus = @Estatus 
+        WHERE ProyectoID = @ID
+      `)
+    res.json({ mensaje: 'Proyecto actualizado correctamente' })
   } catch (e) { res.status(500).send(e.message) }
 })
 
