@@ -227,10 +227,10 @@ export default function GestionIngenieria({
               <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
                 <button 
                   onClick={() => iniciarEdicion(item)} 
-                  title="Editar elemento"
+                  title="Modificar Elemento / Padre" 
                   style={{ backgroundColor: '#ffc107', color: '#000', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold' }}
                 >
-                  ✏️
+                  ✏️ Modificar
                 </button>
 
                 {item.UrlGLB ? (
@@ -262,7 +262,7 @@ export default function GestionIngenieria({
     })
   }
 
-  // Render para Tabla de Control de Avance
+  // Render para Tabla de Control de Avance (con comportamiento fluido original)
   const renderizarFilasAvance = (padreId = null, nivelProfundidad = 0, multiplicadorAcumulado = 1) => {
     const nodos = disenosFiltrados.filter(d => {
       if (padreId === null) return !d.PadreID || d.TipoNivel === 'Ensamble'
@@ -328,7 +328,7 @@ export default function GestionIngenieria({
                 />
                 {nivelProfundidad > 0 && (
                   <span style={{ fontSize: '11px', color: '#6c757d' }}>
-                    (Total: <strong>{reqTotal}</strong>)
+                    (Tot: <strong>{reqTotal}</strong>)
                   </span>
                 )}
               </div>
@@ -343,7 +343,6 @@ export default function GestionIngenieria({
                 <input 
                   type="number" 
                   min="0" 
-                  max={reqTotal * 2}
                   defaultValue={item.CantidadLista || 0} 
                   onBlur={(e) => {
                     const val = parseInt(e.target.value, 10)
@@ -580,7 +579,7 @@ export default function GestionIngenieria({
             </div>
 
             <div style={{ gridColumn: '1 / -1', marginTop: '10px', display: 'flex', gap: '10px' }}>
-              <button type="submit" disabled={guardando} style={{ backgroundColor: elementoEditando ? '#ffc107' : '#28a745', color: elementoEditando ? '#000' : '##fff', border: 'none', padding: '12px 24px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', flex: 1 }}>
+              <button type="submit" disabled={guardando} style={{ backgroundColor: elementoEditando ? '#ffc107' : '#28a745', color: elementoEditando ? '#000' : '#fff', border: 'none', padding: '12px 24px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', flex: 1 }}>
                 {guardando ? '⌛ Guardando y Subiendo Archivos...' : (elementoEditando ? '💾 Actualizar Elemento' : '💾 Guardar Elemento')}
               </button>
               <button type="button" onClick={() => { setElementoEditando(null); setPestanaIngenieria('explorador'); }} style={{ backgroundColor: '#6c757d', color: '#fff', border: 'none', padding: '12px 20px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>

@@ -320,7 +320,7 @@ app.put('/api/compras/cancelar/:id', async (req, res) => {
 })
 
 // -------------------------------------------------------------
-// 6. INGENIERÍA (Alta, Consulta y Edición)
+// 6. INGENIERÍA (Alta, Consulta, Edición y Avance)
 // -------------------------------------------------------------
 app.get('/api/ingenieria', async (req, res) => {
   try { 
@@ -390,6 +390,29 @@ app.put('/api/ingenieria/:id', uploadIngenieria, async (req, res) => {
     res.json({ mensaje: 'Actualizado correctamente' })
   } catch (e) { 
     res.status(500).send(e.message) 
+  }
+})
+
+// Endpoint agregado para actualizar las cantidades de avance y requeridas en tiempo real
+app.put('/api/ingenieria/:id/avance', async (req, res) => {
+  const { id } = req.params
+  const { cantidadLista, cantidadRequerida } = req.body
+
+  try {
+    let pool = await sql.connect(config)
+    await pool.request()
+      .input('ID', sql.Int, parseInt(id, 10))
+      .input('CL', sql.Int, parseInt(cantidadLista, 10) || 0)
+      .input('CR', sql.Int, parseInt(cantidadRequerida, 10) || 1)
+      .query(`
+        UPDATE Ingenieria 
+        SET CantidadLista = @CL, 
+            CantidadRequerida = @CR 
+        WHERE ID = @ID
+      `)
+    res.json({ mensaje: 'Avance actualizado correctamente' })
+  } catch (e) {
+    res.status(500).send(e.message)
   }
 })
 
