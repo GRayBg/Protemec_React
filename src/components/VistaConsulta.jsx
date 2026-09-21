@@ -98,6 +98,7 @@ export default function VistaConsulta({ compras, iniciarEdicion, proveedoresUnic
     { key: 'proveedor', label: 'Proveedor', align: 'left' },
     { key: 'fecha_compra', label: 'Fecha Compra', align: 'center' },
     { key: 'producto', label: 'Producto', align: 'left' },
+    { key: 'material', label: 'Material', align: 'left' },
     { key: 'subtotal', label: 'Subtotal', align: 'right' },
     { key: 'total_con_iva', label: 'Total c/ IVA', align: 'right' },
     { key: 'pdf', label: 'PDF', align: 'center' },
@@ -115,7 +116,19 @@ export default function VistaConsulta({ compras, iniciarEdicion, proveedoresUnic
         )
       }
       case 'proveedor':
-        return <strong style={{ color: '#0f172a', fontWeight: '700', fontSize: '13px', whiteSpace: 'nowrap' }}>{fila.Proveedor || fila.proveedor || '—'}</strong>
+        return (
+          <strong style={{ 
+            color: '#0f172a', 
+            fontWeight: '700', 
+            fontSize: '13px', 
+            display: 'inline-block',
+            maxWidth: '660px',           // Triple del ancho anterior (660px)
+            whiteSpace: 'normal',        // Salto de línea adaptativo en alto
+            wordBreak: 'break-word'
+          }}>
+            {fila.Proveedor || fila.proveedor || '—'}
+          </strong>
+        )
       case 'fecha_compra': {
         const f = String(fila.FechaCompra || fila.fechaCompra || fila.Fecha || fila.fecha || '').split('T')[0]
         const partes = f.split('-')
@@ -123,6 +136,24 @@ export default function VistaConsulta({ compras, iniciarEdicion, proveedoresUnic
       }
       case 'producto':
         return <span style={{ backgroundColor: '#f8fafc', border: '1px solid #cbd5e1', color: '#1e293b', padding: '3px 7px', borderRadius: '5px', fontSize: '12px', fontWeight: '600', whiteSpace: 'nowrap' }}>{fila.Producto || fila.producto || '—'}</span>
+      case 'material':
+        return (
+          <span style={{ 
+            color: '#7c3aed', 
+            backgroundColor: '#f5f3ff', 
+            border: '1px solid #ddd6fe', 
+            padding: '4px 8px', 
+            borderRadius: '5px', 
+            fontSize: '12px', 
+            fontWeight: '600', 
+            display: 'inline-block',
+            maxWidth: '660px',           // Triple del ancho anterior (660px)
+            whiteSpace: 'normal',        // Salto de línea adaptativo en alto
+            wordBreak: 'break-word'
+          }}>
+            🛠️ {fila.Material || fila.material || '—'}
+          </span>
+        )
       case 'subtotal': {
         const val = fila._subtotalCalculado
         return <span style={{ fontFamily: 'Consolas, SFMono-Regular, monospace', fontWeight: '700', color: '#0f172a', fontSize: '13px', whiteSpace: 'nowrap' }}>${val.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
@@ -350,10 +381,6 @@ export default function VistaConsulta({ compras, iniciarEdicion, proveedoresUnic
                           <div style={estilos.detalleItem}>
                             <span style={estilos.detalleLabel}>Categoría:</span>
                             <span style={estilos.detalleValor}>{fila.Categoria || fila.categoria || '—'}</span>
-                          </div>
-                          <div style={estilos.detalleItem}>
-                            <span style={estilos.detalleLabel}>Material:</span>
-                            <span style={{ ...estilos.detalleValor, color: '#7c3aed' }}>🛠️ {fila.Material || fila.material || '—'}</span>
                           </div>
                           <div style={estilos.detalleItem}>
                             <span style={estilos.detalleLabel}>Precio Unitario:</span>
