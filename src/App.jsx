@@ -10,8 +10,8 @@ import GestionAlmacenInventario from './components/GestionAlmacenInventario'
 import GestionChatbot from './components/GestionChatbot'
 import ModalConfiguracion from './components/ModalConfiguracion'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
-
+//const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+const API_URL = import.meta.env.VITE_API_URL || 'https://pruebajs-ezbja7gjf9cmg4fn.centralus-01.azurewebsites.net';
 export default function App() {
   const [moduloPrincipal, setModuloPrincipal] = useState('compras')
   const [menuAbierto, setMenuAbierto] = useState(false)
