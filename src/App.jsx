@@ -10,7 +10,7 @@ import GestionAlmacen3D from './components/GestionAlmacen3D'
 import GestionChatbot from './components/GestionChatbot'
 import ModalConfiguracion from './components/ModalConfiguracion'
 
-const API_URL = import.meta.env.VITE_API_URL
+const API_URL = import.meta.env.VITE_API_URL || 'https://pruebajs-ezbja7gjf9cmg4fn.centralus-01.azurewebsites.net'
 
 const PERFILES_INICIALES = [
   {
