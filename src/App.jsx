@@ -10,7 +10,7 @@ import GestionAlmacen3D from './components/GestionAlmacen3D'
 import GestionChatbot from './components/GestionChatbot'
 import ModalConfiguracion from './components/ModalConfiguracion'
 
-const API_URL = import.meta.env.VITE_API_URL //|| 'http://localhost:3000'
+const API_URL = import.meta.env.VITE_API_URL
 
 const PERFILES_INICIALES = [
   {
