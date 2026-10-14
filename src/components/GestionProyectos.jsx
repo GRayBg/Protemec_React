@@ -1,6 +1,13 @@
 import { useState } from 'react'
 
-export default function GestionProyectos({ proyectos, clientes, ubicaciones, API_URL, recargarDatos }) {
+export default function GestionProyectos({
+  proyectos = [],
+  clientes = [],
+  ubicaciones = [],
+  API_URL,
+  recargarDatos,
+  mostrarToast
+}) {
   const [idEditando, setIdEditando] = useState(null)
   const [nombreProyecto, setNombreProyecto] = useState('')
   const [proyectoIdExterno, setProyectoIdExterno] = useState('')
@@ -10,18 +17,19 @@ export default function GestionProyectos({ proyectos, clientes, ubicaciones, API
   const [estatus, setEstatus] = useState('Activo')
   const [guardando, setGuardando] = useState(false)
 
-  // Filtramos solo las ubicaciones pertenecientes al cliente seleccionado
+  const notificar = (msg, tipo = 'exito') => {
+    if (mostrarToast) mostrarToast(msg, tipo)
+  }
+
   const ubicacionesDelCliente = ubicaciones.filter(
-    u => String(u.ClienteID) === String(clienteSeleccionadoID)
+    (u) => String(u.ClienteID) === String(clienteSeleccionadoID)
   )
 
   const iniciarEdicion = (p) => {
     setIdEditando(p.ProyectoID)
     setNombreProyecto(p.NombreProyecto || '')
     setProyectoIdExterno(p.ProyectoID_Externo || '')
-    
-    // Buscamos el ClienteID a través de la ubicación si no viene directo en el proyecto
-    const ubicacionObj = ubicaciones.find(u => String(u.UbicacionID) === String(p.UbicacionID))
+    const ubicacionObj = ubicaciones.find((u) => String(u.UbicacionID) === String(p.UbicacionID))
     setClienteSeleccionadoID(p.ClienteID || ubicacionObj?.ClienteID || '')
     setUbicacionID(p.UbicacionID || '')
     setDescripcion(p.Descripcion || '')
@@ -40,7 +48,7 @@ export default function GestionProyectos({ proyectos, clientes, ubicaciones, API
 
   const guardarProyecto = async (e) => {
     e.preventDefault()
-    if (!ubicacionID) return alert('Debes seleccionar una ubicación válida para el cliente.')
+    if (!ubicacionID) return notificar('Selecciona una ubicación válida para el cliente', 'alerta')
     setGuardando(true)
 
     const url = idEditando ? `${API_URL}/api/proyectos/${idEditando}` : `${API_URL}/api/proyectos`
@@ -50,191 +58,206 @@ export default function GestionProyectos({ proyectos, clientes, ubicaciones, API
       const res = await fetch(url, {
         method: metodo,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          nombreProyecto, 
-          proyectoIdExterno, 
-          ubicacionID, 
+        body: JSON.stringify({
+          nombreProyecto,
+          proyectoIdExterno,
+          ubicacionID,
           descripcion,
-          estatus 
+          estatus
         })
       })
       if (!res.ok) throw new Error('Error al guardar el proyecto')
-      
+
+      notificar(idEditando ? `Proyecto #${idEditando} actualizado` : 'Nuevo proyecto registrado')
       cancelarEdicion()
       recargarDatos()
-      alert(idEditando ? '¡Proyecto actualizado con éxito!' : '¡Proyecto registrado con éxito!')
     } catch (err) {
-      alert(err.message)
+      notificar(err.message, 'error')
     } finally {
       setGuardando(false)
     }
   }
 
+  const estiloBadgeEstatus = (est) => {
+    switch (est) {
+      case 'Activo':
+        return { bg: '#ecfdf5', color: '#065f46', dot: '#10b981' }
+      case 'En Proceso':
+        return { bg: '#fffbeb', color: '#92400e', dot: '#f59e0b' }
+      case 'Concluido':
+        return { bg: '#eff6ff', color: '#1d4ed8', dot: '#3b82f6' }
+      case 'Cancelado':
+        return { bg: '#fef2f2', color: '#991b1b', dot: '#ef4444' }
+      default:
+        return { bg: '#f1f5f9', color: '#475569', dot: '#64748b' }
+    }
+  }
+
   return (
-    <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'flex-start' }}>
-      
+    <div style={{ display: 'grid', gridTemplateColumns: '350px 1fr', gap: '20px', alignItems: 'start' }}>
       {/* FORMULARIO DE ALTA / EDICIÓN */}
-      <form onSubmit={guardarProyecto} style={estilos.formulario}>
-        <h3 style={{ marginTop: 0, color: '#0f172a', fontSize: '15px' }}>
+      <form onSubmit={guardarProyecto} className="pro-card" style={{ padding: '22px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        <h3 style={{ fontSize: '15px' }}>
           {idEditando ? `✏️ Modificar Proyecto #${idEditando}` : '➕ Alta de Proyecto'}
         </h3>
-        
-        <label style={estilos.label}>ID Proyecto Externo (Folio):</label>
-        <input 
-          type="text" 
-          placeholder="Ej. CDP002779-2" 
-          value={proyectoIdExterno} 
-          onChange={e => setProyectoIdExterno(e.target.value)} 
-          style={estilos.input} 
-        />
 
-        <label style={estilos.label}>Nombre del Proyecto:</label>
-        <input 
-          type="text" 
-          placeholder="Ej. PLATO DE VACIO FRONT EAR..." 
-          value={nombreProyecto} 
-          onChange={e => setNombreProyecto(e.target.value)} 
-          required 
-          style={estilos.input} 
-        />
+        <div>
+          <label className="pro-label">Folio / ID Externo (Cotización / OC)</label>
+          <input
+            type="text"
+            placeholder="Ej. CDP002779-2"
+            value={proyectoIdExterno}
+            onChange={(e) => setProyectoIdExterno(e.target.value)}
+            className="pro-input pro-mono"
+          />
+        </div>
 
-        {/* 1. Selección de Cliente */}
-        <label style={estilos.label}>1. Selecciona Cliente:</label>
-        <select 
-          value={clienteSeleccionadoID} 
-          onChange={e => {
-            setClienteSeleccionadoID(e.target.value)
-            setUbicacionID('') // Resetear ubicación al cambiar cliente
-          }} 
-          required 
-          style={estilos.input}
-        >
-          <option value="">-- Seleccionar Cliente --</option>
-          {clientes.map(c => (
-            <option key={c.ClienteID} value={c.ClienteID}>{c.NombreCliente}</option>
-          ))}
-        </select>
+        <div>
+          <label className="pro-label">Nombre del Proyecto *</label>
+          <input
+            type="text"
+            placeholder="Ej. PLATO DE VACÍO FRONT EAR..."
+            value={nombreProyecto}
+            onChange={(e) => setNombreProyecto(e.target.value)}
+            required
+            className="pro-input"
+          />
+        </div>
 
-        {/* 2. Selección de Ubicación */}
-        <label style={estilos.label}>2. Selecciona Ubicación / Planta:</label>
-        <select 
-          value={ubicacionID} 
-          onChange={e => setUbicacionID(e.target.value)} 
-          disabled={!clienteSeleccionadoID} 
-          required 
-          style={estilos.input}
-        >
-          <option value="">
-            {!clienteSeleccionadoID 
-              ? '-- Primero elige un cliente --' 
-              : ubicacionesDelCliente.length === 0 
-                ? '-- Sin ubicaciones para este cliente --' 
-                : '-- Selecciona Ubicación --'}
-          </option>
-          {ubicacionesDelCliente.map(u => (
-            <option key={u.UbicacionID} value={u.UbicacionID}>
-              {u.NombreUbicacion} {u.Ciudad ? `(${u.Ciudad})` : ''}
+        <div>
+          <label className="pro-label">1. Selecciona Cliente *</label>
+          <select
+            value={clienteSeleccionadoID}
+            onChange={(e) => {
+              setClienteSeleccionadoID(e.target.value)
+              setUbicacionID('')
+            }}
+            required
+            className="pro-select"
+          >
+            <option value="">-- Seleccionar Cliente --</option>
+            {clientes.map((c) => (
+              <option key={c.ClienteID} value={c.ClienteID}>{c.NombreCliente}</option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="pro-label">2. Selecciona Planta / Ubicación *</label>
+          <select
+            value={ubicacionID}
+            onChange={(e) => setUbicacionID(e.target.value)}
+            disabled={!clienteSeleccionadoID}
+            required
+            className="pro-select"
+          >
+            <option value="">
+              {!clienteSeleccionadoID
+                ? 'Primero elige un cliente'
+                : ubicacionesDelCliente.length === 0
+                  ? 'Sin plantas registradas'
+                  : '-- Seleccionar Planta --'}
             </option>
-          ))}
-        </select>
+            {ubicacionesDelCliente.map((u) => (
+              <option key={u.UbicacionID} value={u.UbicacionID}>
+                {u.NombreUbicacion} {u.Ciudad ? `(${u.Ciudad})` : ''}
+              </option>
+            ))}
+          </select>
+        </div>
 
-        <label style={estilos.label}>Estatus:</label>
-        <select value={estatus} onChange={e => setEstatus(e.target.value)} style={estilos.input}>
-          <option value="Activo">🟢 Activo</option>
-          <option value="En Proceso">🟡 En Proceso</option>
-          <option value="Concluido">🔵 Concluido</option>
-          <option value="Cancelado">🔴 Cancelado</option>
-        </select>
+        <div>
+          <label className="pro-label">Estatus Operativo</label>
+          <select value={estatus} onChange={(e) => setEstatus(e.target.value)} className="pro-select">
+            <option value="Activo">🟢 Activo</option>
+            <option value="En Proceso">🟡 En Proceso</option>
+            <option value="Concluido">🔵 Concluido</option>
+            <option value="Cancelado">🔴 Cancelado</option>
+          </select>
+        </div>
 
-        <label style={estilos.label}>Descripción / Notas:</label>
-        <textarea 
-          placeholder="Descripción u observaciones del proyecto..." 
-          value={descripcion} 
-          onChange={e => setDescripcion(e.target.value)} 
-          style={{ ...estilos.input, height: '60px', resize: 'vertical' }} 
-        />
+        <div>
+          <label className="pro-label">Alcance / Notas Técnicas</label>
+          <textarea
+            placeholder="Observaciones o entregables del proyecto..."
+            value={descripcion}
+            onChange={(e) => setDescripcion(e.target.value)}
+            className="pro-textarea"
+            style={{ height: '72px', resize: 'vertical' }}
+          />
+        </div>
 
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <button type="submit" disabled={guardando} style={idEditando ? estilos.botonActualizar : estilos.botonGuardar}>
-            {guardando ? 'Guardando...' : idEditando ? '💾 Actualizar Proyecto' : '💾 Registrar Proyecto'}
-          </button>
-          
+        <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
           {idEditando && (
-            <button type="button" onClick={cancelarEdicion} style={estilos.botonCancelar}>
-              ❌ Cancelar
+            <button type="button" onClick={cancelarEdicion} className="pro-btn pro-btn-secondary" style={{ flex: 1 }}>
+              Cancelar
             </button>
           )}
+          <button type="submit" disabled={guardando} className="pro-btn pro-btn-primary" style={{ flex: 2 }}>
+            {guardando ? 'Guardando...' : idEditando ? 'Actualizar Proyecto' : 'Registrar Proyecto'}
+          </button>
         </div>
       </form>
 
-      {/* CATÁLOGO / TABLA DE PROYECTOS */}
-      <div style={{ flex: '2', minWidth: '500px', backgroundColor: '#ffffff', padding: '20px', borderRadius: '10px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)' }}>
-        <h3 style={{ marginTop: 0, color: '#0f172a', fontSize: '15px' }}>📁 Catálogo de Proyectos</h3>
-        <table style={estilos.tabla}>
+      {/* TABLA DE PROYECTOS */}
+      <div className="pro-table-container">
+        <table className="pro-table">
           <thead>
-            <tr style={estilos.encabezado}>
-              <th style={estilos.th}>ID</th>
-              <th style={estilos.th}>Folio / ID Ext.</th>
-              <th style={estilos.th}>Proyecto</th>
-              <th style={estilos.th}>Cliente / Ubicación</th>
-              <th style={estilos.th}>Estatus</th>
-              <th style={estilos.th}>Acción</th>
+            <tr>
+              <th style={{ width: '65px', textAlign: 'center' }}>ID</th>
+              <th>Folio Externo</th>
+              <th>Nombre del Proyecto</th>
+              <th>Cliente y Planta</th>
+              <th style={{ textAlign: 'center' }}>Estatus</th>
+              <th style={{ textAlign: 'right' }}>Acción</th>
             </tr>
           </thead>
           <tbody>
             {proyectos.length === 0 ? (
-              <tr><td colSpan="6" style={{ padding: '30px', textAlign: 'center', color: '#94a3b8', fontStyle: 'italic' }}>No hay proyectos registrados.</td></tr>
+              <tr>
+                <td colSpan="6" style={{ textAlign: 'center', padding: '40px', color: '#86868b' }}>
+                  No hay proyectos registrados.
+                </td>
+              </tr>
             ) : (
-              proyectos.map(p => (
-                <tr key={p.ProyectoID} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                  <td style={{ ...estilos.td, fontFamily: 'Consolas, monospace', fontWeight: '700' }}>#{p.ProyectoID}</td>
-                  <td style={{ ...estilos.td, fontFamily: 'Consolas, monospace', color: '#2563eb', fontWeight: '600' }}>{p.ProyectoID_Externo || '—'}</td>
-                  <td style={{ ...estilos.td, color: '#0f172a', fontWeight: '600' }}>{p.NombreProyecto}</td>
-                  <td style={estilos.td}>
-                    <div style={{ fontWeight: '700', color: '#1e293b' }}>{p.NombreCliente || '—'}</div>
-                    <div style={{ fontSize: '11px', color: '#64748b' }}>📍 {p.NombreUbicacion || '—'}</div>
-                  </td>
-                  <td style={estilos.td}>
-                    <span style={{ 
-                      padding: '3px 8px', 
-                      borderRadius: '4px', 
-                      fontSize: '11px', 
-                      fontWeight: 'bold',
-                      backgroundColor: p.Estatus === 'Activo' ? '#d1fae5' : '#f1f5f9',
-                      color: p.Estatus === 'Activo' ? '#065f46' : '#475569'
-                    }}>
-                      {p.Estatus || 'Activo'}
-                    </span>
-                  </td>
-                  <td style={estilos.td}>
-                    <button 
-                      onClick={() => iniciarEdicion(p)} 
-                      style={estilos.botonAccionEditar}
-                      title="Editar Proyecto"
-                    >
-                      ✏️ Editar
-                    </button>
-                  </td>
-                </tr>
-              ))
+              proyectos.map((p) => {
+                const badge = estiloBadgeEstatus(p.Estatus || 'Activo')
+                return (
+                  <tr key={p.ProyectoID}>
+                    <td className="pro-mono" style={{ textAlign: 'center', fontWeight: 700, color: '#86868b' }}>
+                      #{p.ProyectoID}
+                    </td>
+                    <td className="pro-mono" style={{ color: '#0071e3', fontWeight: 700 }}>
+                      {p.ProyectoID_Externo || '—'}
+                    </td>
+                    <td>
+                      <div style={{ fontWeight: 600 }}>{p.NombreProyecto}</div>
+                      {p.Descripcion && (
+                        <div style={{ fontSize: '11.5px', color: '#86868b' }}>{p.Descripcion}</div>
+                      )}
+                    </td>
+                    <td>
+                      <div style={{ fontWeight: 600 }}>{p.NombreCliente || '—'}</div>
+                      <div style={{ fontSize: '11.5px', color: '#515154' }}>📍 {p.NombreUbicacion || '—'}</div>
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      <span className="pro-badge" style={{ backgroundColor: badge.bg, color: badge.color }}>
+                        <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: badge.dot }} />
+                        {p.Estatus || 'Activo'}
+                      </span>
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      <button onClick={() => iniciarEdicion(p)} className="pro-btn pro-btn-secondary pro-btn-sm">
+                        Editar
+                      </button>
+                    </td>
+                  </tr>
+                )
+              })
             )}
           </tbody>
         </table>
       </div>
     </div>
   )
-}
-
-const estilos = {
-  formulario: { flex: '1', minWidth: '320px', backgroundColor: '#ffffff', padding: '20px', borderRadius: '10px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)' },
-  label: { fontSize: '11px', fontWeight: '700', color: '#64748b', display: 'block', marginBottom: '4px', textTransform: 'uppercase' },
-  input: { width: '100%', padding: '9px 10px', marginBottom: '12px', borderRadius: '6px', border: '1px solid #cbd5e1', boxSizing: 'border-box', fontSize: '13px', backgroundColor: '#fff', color: '#1e293b' },
-  botonGuardar: { backgroundColor: '#2563eb', color: '#fff', border: 'none', padding: '10px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', width: '100%', fontSize: '13px' },
-  botonActualizar: { backgroundColor: '#10b981', color: '#fff', border: 'none', padding: '10px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', flex: '2', fontSize: '13px' },
-  botonCancelar: { backgroundColor: '#64748b', color: '#fff', border: 'none', padding: '10px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', flex: '1', fontSize: '13px' },
-  botonAccionEditar: { backgroundColor: '#f1f5f9', border: '1px solid #cbd5e1', color: '#1e293b', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', fontWeight: '600', fontSize: '11px' },
-  tabla: { width: '100%', borderCollapse: 'collapse', fontSize: '13px' },
-  encabezado: { backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0', textAlign: 'left' },
-  th: { padding: '12px 10px', color: '#334155', fontWeight: '700', fontSize: '11px', textTransform: 'uppercase' },
-  td: { padding: '12px 10px', verticalAlign: 'middle', color: '#1e293b' }
 }

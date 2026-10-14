@@ -1,30 +1,27 @@
-import React, { Suspense, useEffect } from 'react';
-import { Canvas } from '@react-three/fiber';
-import { OrbitControls, useGLTF, Stage, Html } from '@react-three/drei';
+import React, { Suspense, useEffect, useState } from 'react'
+import { Canvas } from '@react-three/fiber'
+import { OrbitControls, useGLTF, Stage, Html } from '@react-three/drei'
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
-    super(props);
-    this.state = { hasError: false };
+    super(props)
+    this.state = { hasError: false }
   }
-
   static getDerivedStateFromError() {
-    return { hasError: true };
+    return { hasError: true }
   }
-
   componentDidCatch(error) {
-    console.error("Error en el visor 3D:", error);
+    console.error('Error en el visor 3D:', error)
   }
-
   render() {
     if (this.state.hasError) {
       return (
-        <div style={{ height: '550px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#dc3545', background: '#ffffff', textAlign: 'center' }}>
-          ⚠️ No se pudo renderizar este archivo 3D.
+        <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#991b1b', background: '#fef2f2', borderRadius: '12px', padding: '20px', textAlign: 'center' }}>
+          ⚠️ No fue posible renderizar este modelo 3D (.GLB). Verifica el archivo en Azure Blob Storage.
         </div>
-      );
+      )
     }
-    return this.props.children;
+    return this.props.children
   }
 }
 
@@ -32,33 +29,48 @@ function Model({ url }) {
   useEffect(() => {
     return () => {
       try {
-        useGLTF.clear(url);
-      } catch (e) {
-        // Ignorar si no estaba en caché
+        useGLTF.clear(url)
+      } catch {
+        // Ignorar limpieza de caché
       }
-    };
-  }, [url]);
+    }
+  }, [url])
 
-  const { scene } = useGLTF(url);
-  return <primitive object={scene} />;
+  const { scene } = useGLTF(url)
+  return <primitive object={scene} />
 }
 
 export default function GlbViewer({ modelUrl }) {
+  const [autoRotar, setAutoRotar] = useState(false)
+
   return (
-    <div style={{ width: '100%', height: '550px', borderRadius: '8px', overflow: 'hidden', background: '#ffffff', border: '1px solid #e0e0e0', position: 'relative' }}>
+    <div style={{ width: '100%', height: '100%', minHeight: '520px', borderRadius: '12px', overflow: 'hidden', background: 'radial-gradient(circle at center, #ffffff 0%, #f1f5f9 100%)', border: '1px solid var(--border-light)', position: 'relative' }}>
+      {/* Controles Flotantes HUD */}
+      <div style={{ position: 'absolute', top: '12px', right: '12px', zIndex: 10, display: 'flex', gap: '8px' }}>
+        <button
+          type="button"
+          onClick={() => setAutoRotar(!autoRotar)}
+          className={`pro-btn pro-btn-sm ${autoRotar ? 'pro-btn-primary' : 'pro-btn-secondary'}`}
+          style={{ backdropFilter: 'blur(8px)' }}
+        >
+          ↻ {autoRotar ? 'Rotando' : 'Rotar 360°'}
+        </button>
+      </div>
+
       <ErrorBoundary key={modelUrl}>
         <Canvas key={modelUrl} camera={{ position: [0, 0, 5], fov: 45 }} style={{ width: '100%', height: '100%' }}>
-          <color attach="background" args={['#ffffff']} />
-          <ambientLight intensity={0.9} />
+          <ambientLight intensity={0.95} />
           <directionalLight position={[10, 15, 10]} intensity={1.5} />
-          
-          <Suspense fallback={
-            <Html center>
-              <div style={{ color: '#333333', fontFamily: 'sans-serif', background: '#f0f0f0', border: '1px solid #ccc', padding: '10px 20px', borderRadius: '20px', whiteSpace: 'nowrap', boxShadow: '0 2px 6px rgba(0,0,0,0.1)' }}>
-                ⌛ Cargando modelo 3D...
-              </div>
-            </Html>
-          }>
+
+          <Suspense
+            fallback={
+              <Html center>
+                <div style={{ background: 'rgba(29, 29, 31, 0.85)', color: '#fff', padding: '10px 20px', borderRadius: '999px', fontSize: '12.5px', fontWeight: 600, whiteSpace: 'nowrap', boxShadow: '0 8px 24px rgba(0,0,0,0.2)' }}>
+                  Cargando geometría 3D...
+                </div>
+              </Html>
+            }
+          >
             {modelUrl && (
               <Stage environment="studio" intensity={0.5} shadows="contact">
                 <Model url={modelUrl} />
@@ -66,9 +78,9 @@ export default function GlbViewer({ modelUrl }) {
             )}
           </Suspense>
 
-          <OrbitControls autoRotate={false} enableZoom />
+          <OrbitControls autoRotate={autoRotar} autoRotateSpeed={2.5} enableZoom makeDefault />
         </Canvas>
       </ErrorBoundary>
     </div>
-  );
+  )
 }

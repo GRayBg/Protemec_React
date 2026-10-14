@@ -1,113 +1,158 @@
-import React, { useState, Suspense, useMemo } from 'react';
-import { Canvas } from '@react-three/fiber';
-import { OrbitControls, Html, Bounds } from '@react-three/drei';
-import { Almacen3D } from './Almacen3D';
+import React, { useState, Suspense, useMemo, useEffect } from 'react'
+import { Canvas } from '@react-three/fiber'
+import { OrbitControls, Html, Bounds } from '@react-three/drei'
+import { Almacen3D } from './Almacen3D'
 
-const PRODUCTOS_ALMACEN = [
-  { id: 1, nombre: 'Tornillos M8', ubicacion: 'Pieza4' },
-  { id: 2, nombre: 'Tuercas Hexagonales', ubicacion: 'Pieza5' },
-  { id: 3, nombre: 'Arandelas de Presión', ubicacion: 'Pieza6' },
-  { id: 4, nombre: 'Llaves Allen', ubicacion: 'Pieza7' },
-  { id: 5, nombre: 'Placas de Acero', ubicacion: 'Pieza8' },
-  { id: 6, nombre: 'Micrometro Digital', ubicacion: 'Pieza9' },
-  { id: 7, nombre: 'Calibrador Vernier', ubicacion: 'Pieza10' },
-  { id: 8, nombre: 'Seguros Truarc', ubicacion: 'Pieza11' },
-  { id: 9, nombre: 'Rodamientos 6204', ubicacion: 'Pieza12' },
-];
+const PRODUCTOS_ALMACEN_BASE = [
+  { id: 'b1', nombre: 'Tornillos M8', ubicacion: 'Pieza4', stock: 120 },
+  { id: 'b2', nombre: 'Tuercas Hexagonales', ubicacion: 'Pieza5', stock: 85 },
+  { id: 'b3', nombre: 'Arandelas de Presión', ubicacion: 'Pieza6', stock: 200 },
+  { id: 'b4', nombre: 'Llaves Allen', ubicacion: 'Pieza7', stock: 14 },
+  { id: 'b5', nombre: 'Placas de Acero', ubicacion: 'Pieza8', stock: 8 },
+  { id: 'b6', nombre: 'Micrómetro Digital', ubicacion: 'Pieza9', stock: 3 },
+  { id: 'b7', nombre: 'Calibrador Vernier', ubicacion: 'Pieza10', stock: 5 },
+  { id: 'b8', nombre: 'Seguros Truarc', ubicacion: 'Pieza11', stock: 150 },
+  { id: 'b9', nombre: 'Rodamientos 6204', ubicacion: 'Pieza12', stock: 24 }
+]
 
-export default function GestionAlmacen3D() {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [productoSeleccionado, setProductoSeleccionado] = useState(null);
+export default function GestionAlmacen3D({ API_URL }) {
+  const [searchTerm, setSearchTerm] = useState('')
+  const [productoSeleccionado, setProductoSeleccionado] = useState(null)
+  const [inventarioRemoto, setInventarioRemoto] = useState([])
 
-  // 1. Filtrar productos en tiempo real
+  useEffect(() => {
+    if (!API_URL) return
+    fetch(`${API_URL}/api/inventario`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setInventarioRemoto(
+            data.map((i) => ({
+              id: `db-${i.ID}`,
+              nombre: i.NombreProducto,
+              ubicacion: i.Ubicacion3D,
+              stock: i.CantidadStock
+            }))
+          )
+        }
+      })
+      .catch(() => { })
+  }, [API_URL])
+
+  const catalogoCompleto = useMemo(() => {
+    return inventarioRemoto.length > 0
+      ? [...inventarioRemoto, ...PRODUCTOS_ALMACEN_BASE]
+      : PRODUCTOS_ALMACEN_BASE
+  }, [inventarioRemoto])
+
   const productosFiltrados = useMemo(() => {
-    if (!searchTerm.trim()) return PRODUCTOS_ALMACEN;
-    const term = searchTerm.toLowerCase();
-    return PRODUCTOS_ALMACEN.filter(
+    if (!searchTerm.trim()) return catalogoCompleto
+    const term = searchTerm.toLowerCase()
+    return catalogoCompleto.filter(
       (p) =>
-        p.nombre.toLowerCase().includes(term) ||
-        p.ubicacion.toLowerCase().includes(term)
-    );
-  }, [searchTerm]);
+        String(p.nombre).toLowerCase().includes(term) ||
+        String(p.ubicacion).toLowerCase().includes(term)
+    )
+  }, [searchTerm, catalogoCompleto])
 
-  // 2. Extraer ubicaciones para colorear en el 3D
   const ubicacionesAColorear = useMemo(() => {
-    if (productoSeleccionado) {
-      return [productoSeleccionado.ubicacion];
-    }
-    return productosFiltrados.map((p) => p.ubicacion);
-  }, [productosFiltrados, productoSeleccionado]);
+    if (productoSeleccionado) return [productoSeleccionado.ubicacion]
+    if (searchTerm.trim()) return productosFiltrados.map((p) => p.ubicacion)
+    return []
+  }, [productosFiltrados, productoSeleccionado, searchTerm])
 
   return (
-    <div style={estilos.contenedorPrincipal}>
-      
-      {/* PANEL LATERAL DE BÚSQUEDA Y SELECCIÓN (ESTILO CLARO) */}
+    <div className="pro-card" style={estilos.contenedorPrincipal}>
+      {/* PANEL LATERAL DE BÚSQUEDA */}
       <div style={estilos.panelLateral}>
-        <h3 style={{ fontSize: '1rem', marginTop: 0, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          📦 Localizador 3D de Almacén
-        </h3>
-
-        {/* INPUT DEL BUSCADOR */}
-        <div style={{ marginBottom: '12px' }}>
-          <input
-            type="text"
-            placeholder="🔍 Buscar elemento o ubicación..."
-            value={searchTerm}
-            onChange={(e) => {
-              setSearchTerm(e.target.value);
-              setProductoSeleccionado(null);
-            }}
-            style={estilos.inputBuscador}
-          />
+        <div style={{ marginBottom: '14px' }}>
+          <h3 style={{ fontSize: '15px', marginBottom: '4px' }}>📦 Gemelo Digital 3D</h3>
+          <p style={{ fontSize: '12px', color: '#86868b' }}>
+            Selecciona un material para iluminar su ubicación física en el almacén
+          </p>
         </div>
 
-        <p style={{ fontSize: '11px', color: '#64748b', marginBottom: '10px' }}>
-          {productosFiltrados.length === PRODUCTOS_ALMACEN.length
-            ? 'Mostrando todos los elementos:'
-            : `Coincidencias: ${productosFiltrados.length}`}
-        </p>
+        <input
+          type="text"
+          placeholder="🔍 Buscar material o código (Ej. Pieza4)..."
+          value={searchTerm}
+          onChange={(e) => {
+            setSearchTerm(e.target.value)
+            setProductoSeleccionado(null)
+          }}
+          className="pro-input"
+          style={{ marginBottom: '12px' }}
+        />
 
-        {/* LISTA DE RESULTADOS */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+          <span className="pro-label" style={{ margin: 0 }}>
+            Elementos ({productosFiltrados.length})
+          </span>
+          {productoSeleccionado && (
+            <button
+              onClick={() => setProductoSeleccionado(null)}
+              style={{ background: 'none', border: 'none', color: '#0071e3', fontSize: '11.5px', fontWeight: 600, cursor: 'pointer' }}
+            >
+              Limpiar selección
+            </button>
+          )}
+        </div>
+
         <ul style={estilos.listaResultados}>
           {productosFiltrados.map((item) => {
-            const isSelected = productoSeleccionado?.id === item.id;
+            const isSelected = productoSeleccionado?.id === item.id
             return (
               <li
                 key={item.id}
                 onClick={() => setProductoSeleccionado(isSelected ? null : item)}
-                style={{
-                  ...estilos.itemLista,
-                  backgroundColor: isSelected ? '#eff6ff' : '#ffffff',
-                  borderColor: isSelected ? '#3b82f6' : '#e2e8f0',
-                  boxShadow: isSelected ? '0 1px 3px rgba(59,130,246,0.15)' : 'none'
-                }}
+                style={estilos.itemLista(isSelected)}
               >
-                <strong style={{ fontSize: '12.5px', color: isSelected ? '#1d4ed8' : '#0f172a' }}>{item.nombre}</strong>
-                <div style={{ fontSize: '11px', color: '#64748b', marginTop: '3px' }}>
-                  Ubicación: <code style={{ backgroundColor: '#f1f5f9', padding: '1px 4px', borderRadius: '3px', color: '#334155' }}>{item.ubicacion}</code>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <strong style={{ fontSize: '13px', color: isSelected ? '#0071e3' : '#1d1d1f' }}>
+                    {item.nombre}
+                  </strong>
+                  {item.stock !== undefined && (
+                    <span className="pro-mono" style={{ fontSize: '11px', fontWeight: 700, color: '#515154' }}>
+                      {item.stock} u.
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: '11.5px', color: '#86868b', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span>Nodo 3D:</span>
+                  <code className="pro-mono" style={estilos.codeTag(isSelected)}>
+                    {item.ubicacion}
+                  </code>
                 </div>
               </li>
-            );
+            )
           })}
-
-          {productosFiltrados.length === 0 && (
-            <li style={{ color: '#64748b', fontSize: '12px', textAlign: 'center', marginTop: '20px' }}>
-              No se encontraron productos
-            </li>
-          )}
         </ul>
       </div>
 
-      {/* VISOR 3D (FONDO CLARO) */}
+      {/* VISOR 3D */}
       <div style={estilos.visorCanvas}>
+        {productoSeleccionado && (
+          <div style={estilos.hudBanner}>
+            <span>📍 Ubicación iluminada en verde neón:</span>
+            <strong className="pro-mono">{productoSeleccionado.ubicacion}</strong>
+            <span>— {productoSeleccionado.nombre}</span>
+          </div>
+        )}
+
         <Canvas camera={{ position: [5, 5, 5], fov: 40 }}>
-          {/* Fondo claro para el visor 3D */}
           <color attach="background" args={['#f8fafc']} />
-          
-          <ambientLight intensity={1.2} />
+          <ambientLight intensity={1.3} />
           <directionalLight position={[10, 15, 10]} intensity={1.8} />
-          
-          <Suspense fallback={<Html center style={{ color: '#0f172a', fontWeight: '600' }}>Cargando Modelo 3D...</Html>}>
+
+          <Suspense
+            fallback={
+              <Html center>
+                <div style={{ background: '#1d1d1f', color: '#fff', padding: '10px 18px', borderRadius: '99px', fontSize: '12.5px', fontWeight: 600 }}>
+                  Cargando Gemelo Digital 3D...
+                </div>
+              </Html>
+            }
+          >
             <Bounds fit clip observe margin={1.2}>
               <Almacen3D ubicacionesDestacadas={ubicacionesAColorear} />
             </Bounds>
@@ -116,63 +161,73 @@ export default function GestionAlmacen3D() {
           <OrbitControls makeDefault />
         </Canvas>
       </div>
-
     </div>
-  );
+  )
 }
 
 const estilos = {
   contenedorPrincipal: {
     display: 'flex',
     width: '100%',
-    height: 'calc(100vh - 50px)',
-    backgroundColor: '#ffffff',
-    borderRadius: '12px',
-    overflow: 'hidden',
-    border: '1px solid #e2e8f0',
-    boxSizing: 'border-box'
+    height: 'calc(100vh - 140px)',
+    minHeight: '560px',
+    overflow: 'hidden'
   },
   panelLateral: {
-    width: '300px',
+    width: '330px',
     height: '100%',
-    padding: '16px',
-    backgroundColor: '#f8fafc',
-    borderRight: '1px solid #e2e8f0',
-    display: 'flex',
-    flexDirection: 'column',
-    boxSizing: 'border-box'
-  },
-  inputBuscador: {
-    width: '100%',
-    padding: '8px 10px',
-    borderRadius: '6px',
-    border: '1px solid #cbd5e1',
+    padding: '20px',
     backgroundColor: '#ffffff',
-    color: '#0f172a',
-    fontSize: '12px',
-    outline: 'none',
-    boxSizing: 'border-box'
+    borderRight: '1px solid var(--border-light)',
+    display: 'flex',
+    flexDirection: 'column'
   },
   listaResultados: {
     listStyle: 'none',
     padding: 0,
     margin: 0,
     overflowY: 'auto',
-    flex: 1
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px'
   },
-  itemLista: {
-    padding: '10px 12px',
-    marginBottom: '8px',
-    borderRadius: '6px',
-    borderWidth: '1px',
-    borderStyle: 'solid',
+  itemLista: (isSelected) => ({
+    padding: '11px 14px',
+    borderRadius: '10px',
+    border: `1px solid ${isSelected ? '#0071e3' : 'var(--border-light)'}`,
+    backgroundColor: isSelected ? 'rgba(0, 113, 227, 0.06)' : '#ffffff',
     cursor: 'pointer',
-    transition: 'all 0.15s ease'
-  },
+    transition: 'all 0.18s ease'
+  }),
+  codeTag: (isSelected) => ({
+    backgroundColor: isSelected ? '#0071e3' : '#f1f5f9',
+    color: isSelected ? '#ffffff' : '#334155',
+    padding: '2px 6px',
+    borderRadius: '5px',
+    fontSize: '11px',
+    fontWeight: 600
+  }),
   visorCanvas: {
     flex: 1,
     height: '100%',
     position: 'relative',
     backgroundColor: '#f8fafc'
+  },
+  hudBanner: {
+    position: 'absolute',
+    top: '16px',
+    left: '16px',
+    zIndex: 10,
+    backgroundColor: 'rgba(29, 29, 31, 0.86)',
+    backdropFilter: 'blur(10px)',
+    color: '#ffffff',
+    padding: '8px 16px',
+    borderRadius: '999px',
+    fontSize: '12.5px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    boxShadow: '0 8px 20px rgba(0,0,0,0.15)'
   }
-};
+}

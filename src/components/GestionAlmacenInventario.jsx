@@ -1,6 +1,12 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 
-export default function GestionAlmacenInventario({ compras = [], API_URL, recargarDatos }) {
+export default function GestionAlmacenInventario({
+  compras = [],
+  API_URL,
+  recargarDatos,
+  mostrarToast,
+  irAlVisor3D
+}) {
   const [subPestana, setSubPestana] = useState('stock')
   const [inventario, setInventario] = useState([])
   const [item, setItem] = useState(null)
@@ -9,166 +15,235 @@ export default function GestionAlmacenInventario({ compras = [], API_URL, recarg
   const [ubicacion, setUbicacion] = useState('')
   const [cantidad, setCantidad] = useState(1)
 
-  const cargar = async () => {
-    const res = await fetch(`${API_URL}/api/inventario`)
-    if(res.ok) setInventario(await res.json())
-  }
-  useEffect(() => { cargar() }, [])
+  const cargar = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/inventario`)
+      if (res.ok) setInventario(await res.json())
+    } catch {
+      // Silencioso si no hay conexión
+    }
+  }, [API_URL])
 
-  // FILTRADO: Ahora buscamos específicamente 'pendiente' en EstatusAlmacen
-  // Las cotizaciones (NULL) se ignoran automáticamente aquí.
-  const comprasPendientes = compras.filter(c => {
+  useEffect(() => {
+    cargar()
+  }, [cargar])
+
+  const comprasPendientes = compras.filter((c) => {
     const estAlmacen = String(c.EstatusAlmacen || c.estatusAlmacen || '').toLowerCase()
     return estAlmacen === 'pendiente'
   })
 
   const procesarAlta = async (e) => {
     e.preventDefault()
-    await fetch(`${API_URL}/api/inventario/ingresar`, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ 
-        compraID: item.Numero || item.ID || item.Id, 
-        modo, 
-        inventarioIDExistente: destino, 
-        nombreProducto: item.Producto || item.producto, 
-        ubicacion3D: ubicacion, 
-        cantidad 
+    try {
+      const res = await fetch(`${API_URL}/api/inventario/ingresar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          compraID: item.Numero || item.ID || item.Id,
+          modo,
+          inventarioIDExistente: destino,
+          nombreProducto: item.Producto || item.producto,
+          ubicacion3D: ubicacion,
+          cantidad
+        })
       })
-    })
-    setItem(null)
-    cargar()
-    recargarDatos()
+      if (!res.ok) throw new Error('Error al registrar entrada en almacén')
+      if (mostrarToast) mostrarToast('Mercancía ingresada al inventario físico y 3D')
+      setItem(null)
+      cargar()
+      recargarDatos()
+    } catch (err) {
+      if (mostrarToast) mostrarToast(err.message, 'error')
+    }
   }
 
   return (
-    <div style={{ padding: '20px', fontFamily: 'Segoe UI, sans-serif' }}>
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-        <button 
-          onClick={() => setSubPestana('stock')} 
-          style={{ padding: '8px 16px', background: subPestana === 'stock' ? '#0f172a' : '#fff', color: subPestana === 'stock' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600' }}
-        >
-          📦 Stock Físico
-        </button>
-        <button 
-          onClick={() => setSubPestana('recepcion')} 
-          style={{ padding: '8px 16px', background: subPestana === 'recepcion' ? '#0f172a' : '#fff', color: subPestana === 'recepcion' ? '#fff' : '#334155', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer', fontWeight: '600' }}
-        >
-          📥 Pendientes de Recibir ({comprasPendientes.length})
-        </button>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+        <div className="pro-segmented">
+          <button
+            className={`pro-segmented-btn ${subPestana === 'stock' ? 'active' : ''}`}
+            onClick={() => setSubPestana('stock')}
+          >
+            📦 Stock Físico Actual ({inventario.length})
+          </button>
+          <button
+            className={`pro-segmented-btn ${subPestana === 'recepcion' ? 'active' : ''}`}
+            onClick={() => setSubPestana('recepcion')}
+          >
+            📥 Compras Pendientes por Recibir ({comprasPendientes.length})
+          </button>
+        </div>
+
+        {irAlVisor3D && (
+          <button onClick={irAlVisor3D} className="pro-btn pro-btn-secondary">
+            🧊 Ver Mapa 3D de Almacén
+          </button>
+        )}
       </div>
 
       {subPestana === 'stock' ? (
-        <div style={{ background: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+        <div className="pro-table-container">
+          <table className="pro-table">
             <thead>
-              <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', textAlign: 'left' }}>
-                <th style={{ padding: '12px' }}>ID</th>
-                <th style={{ padding: '12px' }}>Producto</th>
-                <th style={{ padding: '12px' }}>Ubicación 3D</th>
-                <th style={{ padding: '12px', textAlign: 'center' }}>Stock</th>
+              <tr>
+                <th style={{ width: '80px', textAlign: 'center' }}>ID</th>
+                <th>Descripción del Producto</th>
+                <th>Nodo / Ubicación 3D</th>
+                <th style={{ textAlign: 'center' }}>Existencia Física</th>
               </tr>
             </thead>
             <tbody>
-              {inventario.map(i => (
-                <tr key={i.ID} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                  <td style={{ padding: '12px' }}>#{i.ID}</td>
-                  <td style={{ padding: '12px' }}><strong>{i.NombreProducto}</strong></td>
-                  <td style={{ padding: '12px' }}>
-                    <span style={{ background: '#eff6ff', color: '#1d4ed8', padding: '2px 6px', borderRadius: '4px', fontFamily: 'monospace' }}>
+              {inventario.map((i) => (
+                <tr key={i.ID}>
+                  <td className="pro-mono" style={{ textAlign: 'center', fontWeight: 700, color: '#86868b' }}>
+                    #{i.ID}
+                  </td>
+                  <td style={{ fontWeight: 600 }}>{i.NombreProducto}</td>
+                  <td>
+                    <span className="pro-badge pro-mono" style={{ backgroundColor: '#eff6ff', color: '#1d4ed8' }}>
                       📍 {i.Ubicacion3D}
                     </span>
                   </td>
-                  <td style={{ padding: '12px', textAlign: 'center', fontWeight: '700' }}>{i.CantidadStock}</td>
+                  <td className="pro-mono" style={{ textAlign: 'center', fontWeight: 800, fontSize: '14px' }}>
+                    {i.CantidadStock}
+                  </td>
                 </tr>
               ))}
               {inventario.length === 0 && (
-                <tr><td colSpan="4" style={{ padding: '30px', textAlign: 'center', color: '#94a3b8' }}>No hay inventario físico registrado.</td></tr>
+                <tr>
+                  <td colSpan="4" style={{ padding: '42px', textAlign: 'center', color: '#86868b' }}>
+                    No hay inventario físico registrado aún.
+                  </td>
+                </tr>
               )}
             </tbody>
           </table>
         </div>
       ) : (
-        <div style={{ background: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+        <div className="pro-table-container">
+          <table className="pro-table">
             <thead>
-              <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', textAlign: 'left' }}>
-                <th style={{ padding: '12px' }}>Folio</th>
-                <th style={{ padding: '12px' }}>Producto Cotizado</th>
-                <th style={{ padding: '12px', textAlign: 'center' }}>Cantidad</th>
-                <th style={{ padding: '12px', textAlign: 'center' }}>Acción</th>
+              <tr>
+                <th style={{ width: '90px', textAlign: 'center' }}>Folio OC</th>
+                <th>Producto Comprado</th>
+                <th>Proveedor</th>
+                <th style={{ textAlign: 'center' }}>Cantidad</th>
+                <th style={{ textAlign: 'right' }}>Recepción</th>
               </tr>
             </thead>
             <tbody>
-              {comprasPendientes.map(c => {
+              {comprasPendientes.map((c) => {
                 const idC = c.Numero ?? c.ID ?? c.Id
                 return (
-                  <tr key={idC} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                    <td style={{ padding: '12px' }}>#{idC}</td>
-                    <td style={{ padding: '12px' }}><strong>{c.Producto || c.producto}</strong></td>
-                    <td style={{ padding: '12px', textAlign: 'center' }}>{c.Cantidad || c.cantidad || 1}</td>
-                    <td style={{ padding: '12px', textAlign: 'center' }}>
-                      <button 
+                  <tr key={idC}>
+                    <td className="pro-mono" style={{ textAlign: 'center', fontWeight: 700 }}>#{idC}</td>
+                    <td style={{ fontWeight: 600 }}>{c.Producto || c.producto}</td>
+                    <td style={{ color: '#515154' }}>{c.Proveedor || c.proveedor || '—'}</td>
+                    <td className="pro-mono" style={{ textAlign: 'center', fontWeight: 700 }}>
+                      {c.Cantidad || c.cantidad || 1}
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      <button
                         onClick={() => {
                           setItem(c)
                           setCantidad(c.Cantidad || c.cantidad || 1)
                           setUbicacion('')
                         }}
-                        style={{ background: '#2563eb', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '12px' }}
+                        className="pro-btn pro-btn-primary pro-btn-sm"
                       >
-                        📥 Recibir en Almacén
+                        📥 Dar Entrada en Almacén
                       </button>
                     </td>
                   </tr>
                 )
               })}
               {comprasPendientes.length === 0 && (
-                <tr><td colSpan="4" style={{ padding: '30px', textAlign: 'center', color: '#94a3b8' }}>No hay compras pendientes por recibir.</td></tr>
+                <tr>
+                  <td colSpan="5" style={{ padding: '42px', textAlign: 'center', color: '#86868b' }}>
+                    Todas las compras están recibidas en almacén.
+                  </td>
+                </tr>
               )}
             </tbody>
           </table>
         </div>
       )}
 
-      {/* MODAL DE INGRESO */}
+      {/* VENTANA EMERGENTE DE RECEPCIÓN DE MERCANCÍA */}
       {item && (
-        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 3000, backdropFilter: 'blur(2px)' }}>
-          <form onSubmit={procesarAlta} style={{ background: '#fff', padding: '24px', borderRadius: '12px', width: '90%', maxWidth: '400px', display: 'flex', flexDirection: 'column', gap: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}>
-            <h4 style={{ margin: '0 0 4px 0', color: '#0f172a' }}>Dar de alta: {item.Producto || item.producto}</h4>
-            
-            <div>
-              <label style={{ fontSize: '11.5px', fontWeight: '700', color: '#475569', display: 'block', marginBottom: '4px' }}>Modo de Registro:</label>
-              <select onChange={e => setModo(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '12.5px' }}>
-                <option value="nuevo">Producto Nuevo</option>
-                <option value="existente">Unificar a Existente</option>
-              </select>
-            </div>
-
-            {modo === 'existente' && (
+        <div className="pro-modal-backdrop" onClick={() => setItem(null)}>
+          <div className="pro-modal-window" style={{ maxWidth: '440px' }} onClick={(e) => e.stopPropagation()}>
+            <div className="pro-modal-header">
               <div>
-                <label style={{ fontSize: '11.5px', fontWeight: '700', color: '#475569', display: 'block', marginBottom: '4px' }}>Seleccionar Stock Existente:</label>
-                <select onChange={e => setDestino(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '12.5px' }}>
-                  <option value="">-- Seleccionar --</option>
-                  {inventario.map(i => <option key={i.ID} value={i.ID}>{i.NombreProducto} (Ubicación: {i.Ubicacion3D})</option>)}
-                </select>
+                <h3 style={{ fontSize: '15px', margin: 0 }}>Recepción en Almacén</h3>
+                <span style={{ fontSize: '12px', color: '#86868b' }}>
+                  {item.Producto || item.producto}
+                </span>
               </div>
-            )}
-
-            <div>
-              <label style={{ fontSize: '11.5px', fontWeight: '700', color: '#475569', display: 'block', marginBottom: '4px' }}>Ubicación 3D:</label>
-              <input type="text" placeholder="Ej. Pieza4" value={ubicacion} onChange={e => setUbicacion(e.target.value)} required style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '12.5px', boxSizing: 'border-box' }} />
+              <button onClick={() => setItem(null)} className="pro-btn pro-btn-secondary pro-btn-sm">✕</button>
             </div>
 
-            <div>
-              <label style={{ fontSize: '11.5px', fontWeight: '700', color: '#475569', display: 'block', marginBottom: '4px' }}>Cantidad:</label>
-              <input type="number" min="1" value={cantidad} onChange={e => setCantidad(e.target.value)} required style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '12.5px', boxSizing: 'border-box' }} />
-            </div>
+            <form onSubmit={procesarAlta}>
+              <div className="pro-modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div>
+                  <label className="pro-label">Modalidad de Ingreso</label>
+                  <select value={modo} onChange={(e) => setModo(e.target.value)} className="pro-select">
+                    <option value="nuevo">Crear Nuevo SKU en Almacén</option>
+                    <option value="existente">Sumar a SKU Existente</option>
+                  </select>
+                </div>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '10px' }}>
-              <button type="button" onClick={() => setItem(null)} style={{ background: '#fff', color: '#475569', border: '1px solid #cbd5e1', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '12px' }}>Cancelar</button>
-              <button type="submit" style={{ background: '#047857', color: '#fff', border: 'none', padding: '8px 14px', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '12px' }}>Confirmar Ingreso</button>
-            </div>
-          </form>
+                {modo === 'existente' && (
+                  <div>
+                    <label className="pro-label">Seleccionar SKU Existente</label>
+                    <select value={destino} onChange={(e) => setDestino(e.target.value)} required className="pro-select">
+                      <option value="">-- Seleccionar --</option>
+                      {inventario.map((i) => (
+                        <option key={i.ID} value={i.ID}>
+                          {i.NombreProducto} ({i.Ubicacion3D})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <div>
+                  <label className="pro-label">Asignar Nodo / Ubicación 3D *</label>
+                  <input
+                    type="text"
+                    placeholder="Ej. Pieza4, EstanteB2..."
+                    value={ubicacion}
+                    onChange={(e) => setUbicacion(e.target.value)}
+                    required
+                    className="pro-input pro-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="pro-label">Cantidad Recibida *</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={cantidad}
+                    onChange={(e) => setCantidad(e.target.value)}
+                    required
+                    className="pro-input pro-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="pro-modal-footer">
+                <button type="button" onClick={() => setItem(null)} className="pro-btn pro-btn-secondary">
+                  Cancelar
+                </button>
+                <button type="submit" className="pro-btn pro-btn-success">
+                  ✓ Confirmar Ingreso
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>
