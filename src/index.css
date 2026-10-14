@@ -1,5 +1,6 @@
 /* ==========================================================================
    PROTEMEC ENTERPRISE ERP/CRM - APPLE & LINEAR INSPIRED DESIGN SYSTEM (2026)
+   OPTIMIZADO PARA MONITORES 32" Y LAPTOPS (13" - 15") CON DOBLE SCROLL
    ========================================================================== */
 
 :root {
@@ -28,7 +29,7 @@
   --status-danger-bg: #fef2f2;
   --status-danger-text: #991b1b;
 
-  --border-light: rgba(0, 0, 0, 0.07);
+  --border-light: rgba(0, 0, 0, 0.08);
   --border-medium: #d2d2d7;
   --border-focus: #0071e3;
   --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.03);
@@ -66,6 +67,7 @@ body {
   font-size: 14px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
 }
 
 #root {
@@ -85,24 +87,34 @@ h5 {
   line-height: 1.25;
 }
 
+/* ==========================================================================
+   BARRAS DE DESPLAZAMIENTO (SCROLLBARS) VISIBLES Y ERGONÓMICAS
+   ========================================================================== */
 ::-webkit-scrollbar {
-  width: 7px;
-  height: 7px;
+  width: 11px;
+  height: 11px;
 }
 
 ::-webkit-scrollbar-track {
-  background: transparent;
+  background: #eef2f6;
+  border-radius: 8px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.16);
-  border-radius: var(--radius-pill);
+  background: #b0bac5;
+  border-radius: 8px;
+  border: 2px solid #eef2f6;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.28);
+  background: #7c8b9b;
 }
 
+::-webkit-scrollbar-corner {
+  background: #eef2f6;
+}
+
+/* Animaciones */
 @keyframes fadeIn {
   from {
     opacity: 0;
@@ -125,7 +137,6 @@ h5 {
   }
 }
 
-/* IMPORTANTE: transform: none al final evita que los modales fijos se descentren en listas largas */
 @keyframes slideDownFade {
   from {
     opacity: 0;
@@ -301,7 +312,7 @@ h5 {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  padding: 20px;
   z-index: 9000;
   animation: fadeIn 0.2s var(--ease-smooth) forwards;
 }
@@ -312,7 +323,7 @@ h5 {
   border: 1px solid rgba(255, 255, 255, 0.6);
   box-shadow: var(--shadow-modal);
   width: 100%;
-  max-height: 90vh;
+  max-height: 92vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -320,7 +331,7 @@ h5 {
 }
 
 .pro-modal-header {
-  padding: 18px 24px;
+  padding: 16px 22px;
   border-bottom: 1px solid var(--border-light);
   display: flex;
   align-items: center;
@@ -329,12 +340,13 @@ h5 {
 }
 
 .pro-modal-body {
-  padding: 24px;
+  padding: 22px;
   overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .pro-modal-footer {
-  padding: 14px 24px;
+  padding: 14px 22px;
   border-top: 1px solid var(--border-light);
   background: #f8fafc;
   display: flex;
@@ -342,21 +354,38 @@ h5 {
   gap: 10px;
 }
 
+
+/* ==========================================================================
+   CONTENEDOR DE TABLA CON DOBLE SCROLL PERMANENTE Y FIJO
+   ========================================================================== */
 .pro-table-container {
   width: 100%;
-  overflow-x: auto;
+  max-height: calc(100vh - 280px);
+  min-height: 380px;
+  overflow-x: scroll !important;
+  /* Fuerza la barra horizontal siempre activa */
+  overflow-y: auto !important;
   border-radius: var(--radius-md);
   border: 1px solid var(--border-light);
   background: var(--bg-surface);
+  box-shadow: var(--shadow-xs);
+  position: relative;
 }
 
 .pro-table {
   width: 100%;
-  border-collapse: collapse;
+  min-width: 1100px;
+  /* Ancho mínimo para asegurar que active el scroll horizontal en pantallas medianas */
+  border-collapse: separate;
+  border-spacing: 0;
   font-size: 13px;
 }
 
-.pro-table th {
+/* Encabezado fijo (Sticky Header) al hacer scroll vertical */
+.pro-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 20;
   background: #f8fafc;
   color: var(--text-secondary);
   font-size: 11px;
@@ -364,19 +393,33 @@ h5 {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   padding: 12px 14px;
-  border-bottom: 1px solid var(--border-light);
+  border-bottom: 1px solid var(--border-medium);
   white-space: nowrap;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.05);
 }
 
 .pro-table td {
-  padding: 12px 14px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.045);
   color: var(--text-primary);
   vertical-align: middle;
+  background-color: var(--bg-surface);
 }
 
 .pro-table tbody tr:hover td {
-  background-color: var(--bg-hover);
+  background-color: #f1f5f9;
+}
+
+/* Última columna (Botón Editar) fija a la derecha en pantallas pequeñas */
+.pro-table th:last-child,
+.pro-table td:last-child {
+  position: sticky;
+  right: 0;
+  z-index: 10;
+}
+
+.pro-table thead th:last-child {
+  z-index: 25;
 }
 
 .pro-segmented {
@@ -385,6 +428,7 @@ h5 {
   padding: 3.5px;
   border-radius: 10px;
   gap: 4px;
+  flex-wrap: wrap;
 }
 
 .pro-segmented-btn {
@@ -394,13 +438,14 @@ h5 {
   font-family: var(--font-sans);
   font-size: 12.5px;
   font-weight: 600;
-  padding: 7px 14px;
+  padding: 6px 12px;
   border-radius: 7.5px;
   cursor: pointer;
   transition: all 0.2s var(--ease-apple);
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  white-space: nowrap;
 }
 
 .pro-segmented-btn.active {
@@ -417,13 +462,14 @@ h5 {
   border-radius: var(--radius-pill);
   font-size: 11.5px;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .pro-mono {
   font-family: var(--font-mono);
 }
 
-/* Switch Toggle Estilo Apple iOS / macOS */
+/* Switch Toggle Estilo Apple */
 .apple-switch {
   position: relative;
   display: inline-block;
@@ -471,12 +517,14 @@ h5 {
   transform: translateX(18px);
 }
 
-/* Tablero Kanban Drag & Drop */
+/* Tablero Kanban Drag & Drop con Scroll Horizontal en Laptops */
 .kanban-board {
   display: grid;
-  grid-template-columns: repeat(3, minmax(290px, 1fr));
-  gap: 18px;
+  grid-template-columns: repeat(3, minmax(280px, 1fr));
+  gap: 16px;
   align-items: start;
+  overflow-x: auto;
+  padding-bottom: 8px;
 }
 
 .kanban-column {
@@ -484,7 +532,9 @@ h5 {
   border: 1px solid var(--border-light);
   border-radius: var(--radius-lg);
   padding: 14px;
-  min-height: 520px;
+  min-height: 480px;
+  max-height: 68vh;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -514,4 +564,30 @@ h5 {
 .kanban-card:active {
   cursor: grabbing;
   transform: scale(0.98);
+}
+
+/* ==========================================================================
+   OPTIMIZACIÓN AUTOMÁTICA PARA LAPTOPS Y PANTALLAS PEQUEÑAS (13" - 15")
+   ========================================================================== */
+@media (max-width: 1440px) {
+
+  html,
+  body {
+    font-size: 13px;
+  }
+
+  .pro-table-container {
+    max-height: calc(100vh - 250px);
+  }
+
+  .pro-table td,
+  .pro-table thead th {
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+
+  .pro-btn {
+    padding: 7px 12px;
+    font-size: 12px;
+  }
 }

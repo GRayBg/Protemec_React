@@ -137,7 +137,7 @@ export default function App() {
 
   // Navegación Principal
   const [moduloActivo, setModuloActivo] = useState('compras')
-  const [sidebarColapsado, setSidebarColapsado] = useState(false)
+  const [sidebarColapsado, setSidebarColapsado] = useState(() => window.innerWidth < 1280)
   const [subVistaIngenieria, setSubVistaIngenieria] = useState('explorador')
   const [subVistaAlmacen, setSubVistaAlmacen] = useState('inventario')
 
@@ -988,9 +988,11 @@ const estilos = {
   },
   appLayout: {
     display: 'flex',
-    minHeight: '100vh',
-    width: '100%',
+    height: '100vh',
+    width: '100vw',
+    overflow: 'hidden',
     backgroundColor: 'var(--bg-canvas)'
+
   },
   sidebar: (colapsado) => ({
     width: colapsado ? '74px' : '264px',
@@ -1103,7 +1105,10 @@ const estilos = {
     flex: 1,
     display: 'flex',
     flexDirection: 'column',
-    minWidth: 0
+    minWidth: 0,
+    height: '100vh',
+    overflowY: 'auto',
+    overflowX: 'auto'
   },
   topHeader: {
     position: 'sticky',
@@ -1121,8 +1126,9 @@ const estilos = {
     flexWrap: 'wrap'
   },
   mainContent: {
-    padding: '24px 28px',
-    flex: 1
+    padding: '18px 22px',
+    flex: 1,
+    minWidth: 0
   },
   loaderContainer: {
     display: 'flex',
