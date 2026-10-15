@@ -16,6 +16,8 @@ const PERFILES_INICIALES = [
   {
     id: 'ing',
     nombre: 'Ingeniería y Diseño CAD',
+    usuario: 'ingenieria',
+    password: 'Prote2026',
     email: 'ingenieria@protemec.com',
     rol: 'Ingeniería',
     esMaestro: false,
@@ -25,12 +27,15 @@ const PERFILES_INICIALES = [
       clientes: { ver: false, editar: false },
       ingenieria: { ver: true, editar: true },
       almacen: { ver: true, editar: false },
-      chatbot: { ver: true, editar: true }
+      chatbot: { ver: true, editar: true },
+      seguridad: { ver: false, editar: false }
     }
   },
   {
     id: 'compras',
     nombre: 'Ejecutivo de Compras',
+    usuario: 'compras',
+    password: 'Prote2026',
     email: 'compras@protemec.com',
     rol: 'Compras',
     esMaestro: false,
@@ -40,12 +45,15 @@ const PERFILES_INICIALES = [
       clientes: { ver: true, editar: true },
       ingenieria: { ver: false, editar: false },
       almacen: { ver: true, editar: false },
-      chatbot: { ver: true, editar: true }
+      chatbot: { ver: true, editar: true },
+      seguridad: { ver: false, editar: false }
     }
   },
   {
     id: 'almacen',
     nombre: 'Control de Almacén',
+    usuario: 'almacen',
+    password: 'Prote2026',
     email: 'almacen@protemec.com',
     rol: 'Almacén',
     esMaestro: false,
@@ -55,7 +63,8 @@ const PERFILES_INICIALES = [
       clientes: { ver: false, editar: false },
       ingenieria: { ver: true, editar: false },
       almacen: { ver: true, editar: true },
-      chatbot: { ver: false, editar: false }
+      chatbot: { ver: false, editar: false },
+      seguridad: { ver: false, editar: false }
     }
   }
 ]
@@ -63,6 +72,7 @@ const PERFILES_INICIALES = [
 const PERFIL_MAESTRO_TOTAL = {
   id: 'master',
   nombre: 'Dirección / Perfil Maestro',
+  usuario: 'admin',
   email: 'admin@protemec.com',
   rol: 'SuperAdmin',
   esMaestro: true,
@@ -72,16 +82,26 @@ const PERFIL_MAESTRO_TOTAL = {
     clientes: { ver: true, editar: true },
     ingenieria: { ver: true, editar: true },
     almacen: { ver: true, editar: true },
-    chatbot: { ver: true, editar: true }
+    chatbot: { ver: true, editar: true },
+    seguridad: { ver: true, editar: true }
   }
 }
 
 export default function App() {
-  // Estados de Seguridad, Perfiles y Credenciales de Emergencia
+  // Estados de Seguridad, Perfiles y Credenciales Maestras
   const [perfilesUsuarios, setPerfilesUsuarios] = useState(() => {
     try {
       const guardado = localStorage.getItem('protemec_rbac_perfiles')
-      return guardado ? JSON.parse(guardado) : PERFILES_INICIALES
+      if (!guardado) return PERFILES_INICIALES
+      const parseado = JSON.parse(guardado)
+      // Asegurar que perfiles guardados previamente tengan la propiedad 'seguridad' oculta por defecto
+      return parseado.map((p) => ({
+        ...p,
+        permisos: {
+          ...p.permisos,
+          seguridad: p.permisos?.seguridad || { ver: false, editar: false }
+        }
+      }))
     } catch {
       return PERFILES_INICIALES
     }
@@ -106,8 +126,8 @@ export default function App() {
   })
 
   // Estados de la Pantalla de Login
-  const [modoLogin, setModoLogin] = useState('entra') // 'entra' | 'maestro'
-  const [emailEntraInput, setEmailEntraInput] = useState('admin@protemec.com')
+  const [modoLogin, setModoLogin] = useState('maestro') // 'entra' | 'maestro'
+  const [emailEntraInput, setEmailEntraInput] = useState('')
   const [userMaestroInput, setUserMaestroInput] = useState('')
   const [passMaestroInput, setPassMaestroInput] = useState('')
   const [errorLogin, setErrorLogin] = useState('')
@@ -134,6 +154,17 @@ export default function App() {
     if (usuarioActual.esMaestro) return PERFIL_MAESTRO_TOTAL
     return perfilesUsuarios.find((p) => p.id === usuarioActual.id) || usuarioActual
   }, [usuarioActual, perfilesUsuarios])
+
+  // Verificar si el usuario actual puede ver o editar el panel de Seguridad
+  const puedeVerSeguridad = Boolean(
+    usuarioConPermisosActualizados?.esMaestro ||
+    usuarioConPermisosActualizados?.permisos?.seguridad?.ver
+  )
+
+  const puedeDarPermisos = Boolean(
+    usuarioConPermisosActualizados?.esMaestro ||
+    usuarioConPermisosActualizados?.permisos?.seguridad?.editar
+  )
 
   // Navegación Principal
   const [moduloActivo, setModuloActivo] = useState('compras')
@@ -262,19 +293,17 @@ export default function App() {
     e.preventDefault()
     setErrorLogin('')
     const correoLimpio = emailEntraInput.trim().toLowerCase()
-    if (correoLimpio === 'admin@protemec.com') {
-      setUsuarioActual(PERFIL_MAESTRO_TOTAL)
-      mostrarToast('Sesión iniciada con Microsoft Entra ID (Perfil Maestro)')
-      return
-    }
-    const perfilEncontrado = perfilesUsuarios.find((p) => p.email.toLowerCase() === correoLimpio)
+
+    const perfilEncontrado = perfilesUsuarios.find(
+      (p) => String(p.email || '').toLowerCase() === correoLimpio
+    )
     if (!perfilEncontrado) {
-      setErrorLogin('Este correo no está registrado en los perfiles del ERP. Usa la Llave Maestra para darlo de alta.')
+      setErrorLogin('Este correo corporativo no está registrado. Solicita acceso al Administrador.')
       return
     }
     setUsuarioActual(perfilEncontrado)
-    const primerModuloPermitido = Object.keys(perfilEncontrado.permisos).find(
-      (k) => perfilEncontrado.permisos[k]?.ver
+    const primerModuloPermitido = ['compras', 'proyectos', 'clientes', 'ingenieria', 'almacen', 'chatbot'].find(
+      (k) => perfilEncontrado.permisos?.[k]?.ver
     )
     if (primerModuloPermitido) setModuloActivo(primerModuloPermitido)
     mostrarToast(`Bienvenido, ${perfilEncontrado.nombre}`)
@@ -283,17 +312,49 @@ export default function App() {
   const iniciarSesionMaestra = (e) => {
     e.preventDefault()
     setErrorLogin('')
+    const uInput = userMaestroInput.trim().toLowerCase()
+
+    // 1. Verificar si es el Administrador Maestro
     if (
-      userMaestroInput.trim() === credencialesMaestras.usuario &&
+      uInput === credencialesMaestras.usuario.toLowerCase() &&
       passMaestroInput === credencialesMaestras.password
     ) {
       setUsuarioActual(PERFIL_MAESTRO_TOTAL)
       setUserMaestroInput('')
       setPassMaestroInput('')
-      mostrarToast('Acceso Maestro de Emergencia Activado')
-    } else {
-      setErrorLogin('Usuario o contraseña maestra incorrectos')
+      mostrarToast('Sesión iniciada como Administrador Maestro')
+      return
     }
+
+    // 2. Verificar si es alguno de los Perfiles creados con Usuario y Contraseña
+    const perfilCoincidente = perfilesUsuarios.find(
+      (p) =>
+        (String(p.usuario || '').toLowerCase() === uInput ||
+          String(p.email || '').toLowerCase() === uInput) &&
+        p.password === passMaestroInput
+    )
+
+    if (perfilCoincidente) {
+      setUsuarioActual(perfilCoincidente)
+      setUserMaestroInput('')
+      setPassMaestroInput('')
+      const primerModulo = ['compras', 'proyectos', 'clientes', 'ingenieria', 'almacen', 'chatbot'].find(
+        (k) => perfilCoincidente.permisos?.[k]?.ver
+      )
+      if (primerModulo) setModuloActivo(primerModulo)
+      mostrarToast(`Bienvenido, ${perfilCoincidente.nombre}`)
+      return
+    }
+
+    setErrorLogin('Usuario o contraseña incorrectos')
+  }
+
+  const cerrarSesion = () => {
+    setModalConfigAbierto(false)
+    setUsuarioActual(null)
+    setUserMaestroInput('')
+    setPassMaestroInput('')
+    setErrorLogin('')
   }
 
   const cancelarEdicion = () => {
@@ -467,19 +528,19 @@ export default function App() {
           <div className="pro-segmented" style={{ width: '100%', marginBottom: '20px', display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
             <button
               type="button"
+              className={`pro-segmented-btn ${modoLogin === 'maestro' ? 'active' : ''}`}
+              onClick={() => { setModoLogin('maestro'); setErrorLogin('') }}
+              style={{ justifyContent: 'center' }}
+            >
+              🔑 Usuario y Contraseña
+            </button>
+            <button
+              type="button"
               className={`pro-segmented-btn ${modoLogin === 'entra' ? 'active' : ''}`}
               onClick={() => { setModoLogin('entra'); setErrorLogin('') }}
               style={{ justifyContent: 'center' }}
             >
               🛡️ Microsoft Entra ID
-            </button>
-            <button
-              type="button"
-              className={`pro-segmented-btn ${modoLogin === 'maestro' ? 'active' : ''}`}
-              onClick={() => { setModoLogin('maestro'); setErrorLogin('') }}
-              style={{ justifyContent: 'center' }}
-            >
-              🔑 Llave Maestra
             </button>
           </div>
 
@@ -489,55 +550,21 @@ export default function App() {
             </div>
           )}
 
-          {modoLogin === 'entra' ? (
-            <form onSubmit={iniciarSesionEntraID} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div>
-                <label className="pro-label">Selecciona o ingresa cuenta Microsoft Entra ID</label>
-                <select
-                  value={emailEntraInput}
-                  onChange={(e) => setEmailEntraInput(e.target.value)}
-                  className="pro-select"
-                  style={{ marginBottom: '8px' }}
-                >
-                  <option value="admin@protemec.com">👑 admin@protemec.com (Perfil Maestro)</option>
-                  {perfilesUsuarios.map((p) => (
-                    <option key={p.id} value={p.email}>
-                      👤 {p.email} ({p.nombre})
-                    </option>
-                  ))}
-                </select>
-                <input
-                  type="email"
-                  value={emailEntraInput}
-                  onChange={(e) => setEmailEntraInput(e.target.value)}
-                  placeholder="correo@protemec.com"
-                  required
-                  className="pro-input pro-mono"
-                />
-              </div>
-
-              <button type="submit" className="pro-btn pro-btn-primary" style={{ padding: '11px' }}>
-                Iniciar sesión con Microsoft Entra ID
-              </button>
-            </form>
-          ) : (
+          {modoLogin === 'maestro' ? (
             <form onSubmit={iniciarSesionMaestra} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div style={{ fontSize: '12px', color: '#515154', backgroundColor: '#f8fafc', padding: '10px', borderRadius: '8px' }}>
-                Acceso directo sin validación de Microsoft Entra ID (Por defecto: <code>admin</code> / <code>ProteMaster2026</code>)
-              </div>
               <div>
-                <label className="pro-label">Usuario Maestro</label>
+                <label className="pro-label">Usuario</label>
                 <input
                   type="text"
                   value={userMaestroInput}
                   onChange={(e) => setUserMaestroInput(e.target.value)}
-                  placeholder="admin"
+                  placeholder="Ingresa tu usuario..."
                   required
                   className="pro-input pro-mono"
                 />
               </div>
               <div>
-                <label className="pro-label">Contraseña Maestra</label>
+                <label className="pro-label">Contraseña</label>
                 <input
                   type="password"
                   value={passMaestroInput}
@@ -547,8 +574,26 @@ export default function App() {
                   className="pro-input pro-mono"
                 />
               </div>
-              <button type="submit" className="pro-btn pro-btn-dark" style={{ padding: '11px' }}>
-                🔓 Desbloquear con Llave Maestra
+              <button type="submit" className="pro-btn pro-btn-primary" style={{ padding: '11px' }}>
+                Iniciar Sesión
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={iniciarSesionEntraID} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div>
+                <label className="pro-label">Correo Corporativo Microsoft Entra ID</label>
+                <input
+                  type="email"
+                  value={emailEntraInput}
+                  onChange={(e) => setEmailEntraInput(e.target.value)}
+                  placeholder="usuario@protemec.com"
+                  required
+                  className="pro-input pro-mono"
+                />
+              </div>
+
+              <button type="submit" className="pro-btn pro-btn-primary" style={{ padding: '11px' }}>
+                Continuar con Microsoft Entra ID
               </button>
             </form>
           )}
@@ -652,57 +697,47 @@ export default function App() {
           })}
         </nav>
 
+        {/* PIE DE BARRA LATERAL: SEGURIDAD SOLO PARA MAESTRO / AUTORIZADOS; LOG OUT PARA LOS DEMÁS */}
         <div style={estilos.sidebarFooter}>
-          <button
-            onClick={() => setModalConfigAbierto(true)}
-            style={estilos.navItem(false, sidebarColapsado)}
-            title="Permisos y Configuración"
-          >
-            <span style={{ fontSize: '16px' }}>🛡️</span>
-            {!sidebarColapsado && (
-              <span style={{ flex: 1, textAlign: 'left', fontWeight: 600 }}>Perfiles y Accesos</span>
-            )}
-          </button>
+          {puedeVerSeguridad && (
+            <button
+              onClick={() => setModalConfigAbierto(true)}
+              style={estilos.navItem(false, sidebarColapsado)}
+              title="Administración de Perfiles y Seguridad"
+            >
+              <span style={{ fontSize: '16px' }}>🛡️</span>
+              {!sidebarColapsado && (
+                <span style={{ flex: 1, textAlign: 'left', fontWeight: 600 }}>Perfiles y Accesos</span>
+              )}
+            </button>
+          )}
 
-          {!sidebarColapsado && (
+          {!sidebarColapsado ? (
             <div style={estilos.azureStatusCard}>
               <div style={{ fontSize: '11.5px', fontWeight: 700, color: '#1d1d1f', marginBottom: '2px' }}>
                 {usuarioConPermisosActualizados.esMaestro ? '👑 ' : '👤 '}
                 {usuarioConPermisosActualizados.nombre}
               </div>
-              <div className="pro-mono" style={{ fontSize: '10.5px', color: '#86868b', marginBottom: '8px' }}>
-                {usuarioConPermisosActualizados.email}
+              <div className="pro-mono" style={{ fontSize: '10.5px', color: '#86868b', marginBottom: '10px' }}>
+                {usuarioConPermisosActualizados.usuario || usuarioConPermisosActualizados.email}
               </div>
 
-              {/* Selector rápido de perfil para pruebas inmediatas */}
-              <select
-                value={usuarioConPermisosActualizados.id}
-                onChange={(e) => {
-                  const val = e.target.value
-                  if (val === 'master') {
-                    setUsuarioActual(PERFIL_MAESTRO_TOTAL)
-                  } else {
-                    const p = perfilesUsuarios.find((x) => x.id === val)
-                    if (p) setUsuarioActual(p)
-                  }
-                }}
-                className="pro-select"
-                style={{ fontSize: '11px', padding: '5px 8px', marginBottom: '6px' }}
-              >
-                <option value="master">Cambiar vista: Perfil Maestro</option>
-                {perfilesUsuarios.map((p) => (
-                  <option key={p.id} value={p.id}>Vista: {p.nombre}</option>
-                ))}
-              </select>
-
               <button
-                onClick={() => setUsuarioActual(null)}
+                onClick={cerrarSesion}
                 className="pro-btn pro-btn-secondary pro-btn-sm"
-                style={{ width: '100%', fontSize: '11px', padding: '5px' }}
+                style={{ width: '100%', fontSize: '11.5px', padding: '6px', fontWeight: 600 }}
               >
-                Cerrar Sesión
+                🚪 Cerrar Sesión
               </button>
             </div>
+          ) : (
+            <button
+              onClick={cerrarSesion}
+              style={estilos.navItem(false, true)}
+              title="Cerrar Sesión"
+            >
+              <span style={{ fontSize: '16px' }}>🚪</span>
+            </button>
           )}
         </div>
       </aside>
@@ -953,18 +988,21 @@ export default function App() {
           document.body
         )}
 
-      {/* MODAL DE SEGURIDAD, PERFILES RBAC Y ENTRA ID */}
-      <ModalConfiguracion
-        abierto={modalConfigAbierto}
-        alCerrar={() => setModalConfigAbierto(false)}
-        API_URL={API_URL}
-        perfilesUsuarios={perfilesUsuarios}
-        setPerfilesUsuarios={setPerfilesUsuarios}
-        credencialesMaestras={credencialesMaestras}
-        setCredencialesMaestras={setCredencialesMaestras}
-        usuarioActual={usuarioConPermisosActualizados}
-        mostrarToast={mostrarToast}
-      />
+      {/* MODAL DE SEGURIDAD, PERFILES RBAC Y ENTRA ID (SOLO SI TIENE PERMISO DE VER SEGURIDAD) */}
+      {puedeVerSeguridad && (
+        <ModalConfiguracion
+          abierto={modalConfigAbierto}
+          alCerrar={() => setModalConfigAbierto(false)}
+          API_URL={API_URL}
+          perfilesUsuarios={perfilesUsuarios}
+          setPerfilesUsuarios={setPerfilesUsuarios}
+          credencialesMaestras={credencialesMaestras}
+          setCredencialesMaestras={setCredencialesMaestras}
+          usuarioActual={usuarioConPermisosActualizados}
+          puedeDarPermisos={puedeDarPermisos}
+          mostrarToast={mostrarToast}
+        />
+      )}
     </div>
   )
 }
@@ -992,7 +1030,6 @@ const estilos = {
     width: '100vw',
     overflow: 'hidden',
     backgroundColor: 'var(--bg-canvas)'
-
   },
   sidebar: (colapsado) => ({
     width: colapsado ? '74px' : '264px',
