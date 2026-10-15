@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 
 const MODULOS_SISTEMA = [
@@ -21,22 +21,37 @@ export default function ModalConfiguracion({
   setCredencialesMaestras,
   usuarioActual,
   puedeDarPermisos = false,
-  mostrarToast
+  mostrarToast,
+  recargarDatos
 }) {
   const [pestana, setPestana] = useState('permisos')
-  const [perfilSeleccionadoId, setPerfilSeleccionadoId] = useState(perfilesUsuarios[0]?.id || 'ing')
+  const [perfilSeleccionadoId, setPerfilSeleccionadoId] = useState(perfilesUsuarios[0]?.id || null)
   const [mostrarFormularioNuevo, setMostrarFormularioNuevo] = useState(false)
+  const [guardandoDB, setGuardandoDB] = useState(false)
 
   // Estados para crear un Nuevo Perfil con Nombre, Usuario y Contraseña
   const [nuevoNombre, setNuevoNombre] = useState('')
   const [nuevoUsuario, setNuevoUsuario] = useState('')
   const [nuevaPassword, setNuevaPassword] = useState('')
   const [nuevoEmail, setNuevoEmail] = useState('')
-  const [nuevoRol, setNuevoRol] = useState('Operaciones')
+  const [nuevoRol, setNuevoRol] = useState('Ingeniería')
 
-  // Estados para Credenciales Maestras de Emergencia
+  // Estados para Credenciales Maestras (Admin)
   const [userMaestroTemp, setUserMaestroTemp] = useState(credencialesMaestras?.usuario || 'admin')
-  const [passMaestroTemp, setPassMaestroTemp] = useState(credencialesMaestras?.password || 'ProteMaster2026')
+  const [passMaestroTemp, setPassMaestroTemp] = useState(credencialesMaestras?.password || '')
+
+  useEffect(() => {
+    if (credencialesMaestras) {
+      setUserMaestroTemp(credencialesMaestras.usuario || 'admin')
+      setPassMaestroTemp(credencialesMaestras.password || '')
+    }
+  }, [credencialesMaestras])
+
+  useEffect(() => {
+    if (perfilesUsuarios.length > 0 && !perfilesUsuarios.some((p) => p.id === perfilSeleccionadoId)) {
+      setPerfilSeleccionadoId(perfilesUsuarios[0].id)
+    }
+  }, [perfilesUsuarios, perfilSeleccionadoId])
 
   if (!abierto) return null
 
@@ -44,41 +59,65 @@ export default function ModalConfiguracion({
   const autorizadoParaEditarPermisos = Boolean(esMaestro || puedeDarPermisos)
   const perfilActivo = perfilesUsuarios.find((p) => p.id === perfilSeleccionadoId) || perfilesUsuarios[0]
 
-  // Cambiar switches de Ver / Editar de cada módulo
-  const togglePermiso = (moduloId, tipoPermiso) => {
-    if (!autorizadoParaEditarPermisos) {
+  // Guardar un perfil actualizado en Azure SQL
+  const persistirPerfilEnSQL = async (perfilActualizado, mensajeExito = null) => {
+    try {
+      setGuardandoDB(true)
+      const res = await fetch(`${API_URL}/api/usuarios/${perfilActualizado.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(perfilActualizado)
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Error al guardar cambios en Azure SQL')
+
+      setPerfilesUsuarios((prev) => prev.map((p) => (p.id === data.id ? data : p)))
+      if (mensajeExito && mostrarToast) mostrarToast(mensajeExito)
+      if (recargarDatos) recargarDatos()
+    } catch (err) {
+      if (mostrarToast) mostrarToast(err.message, 'error')
+    } finally {
+      setGuardandoDB(false)
+    }
+  }
+
+  // Cambiar switches de Ver / Editar de cada módulo y guardar en Azure SQL
+  const togglePermiso = async (moduloId, tipoPermiso) => {
+    if (!autorizadoParaEditarPermisos || !perfilActivo) {
       if (mostrarToast) mostrarToast('No tienes privilegios para modificar permisos', 'alerta')
       return
     }
+
+    const permisoActual = perfilActivo.permisos?.[moduloId] || { ver: false, editar: false }
+    const nuevoValor = !permisoActual[tipoPermiso]
+
+    const permisoActualizado = {
+      ...permisoActual,
+      [tipoPermiso]: nuevoValor
+    }
+    if (tipoPermiso === 'ver' && !nuevoValor) {
+      permisoActualizado.editar = false
+    }
+    if (tipoPermiso === 'editar' && nuevoValor) {
+      permisoActualizado.ver = true
+    }
+
+    const perfilModificado = {
+      ...perfilActivo,
+      permisos: {
+        ...perfilActivo.permisos,
+        [moduloId]: permisoActualizado
+      }
+    }
+
+    // Actualización inmediata en interfaz + persistencia en Azure SQL
     setPerfilesUsuarios((prev) =>
-      prev.map((perfil) => {
-        if (perfil.id !== perfilActivo.id) return perfil
-        const permisoActual = perfil.permisos?.[moduloId] || { ver: false, editar: false }
-        const nuevoValor = !permisoActual[tipoPermiso]
-
-        const permisoActualizado = {
-          ...permisoActual,
-          [tipoPermiso]: nuevoValor
-        }
-        if (tipoPermiso === 'ver' && !nuevoValor) {
-          permisoActualizado.editar = false
-        }
-        if (tipoPermiso === 'editar' && nuevoValor) {
-          permisoActualizado.ver = true
-        }
-
-        return {
-          ...perfil,
-          permisos: {
-            ...perfil.permisos,
-            [moduloId]: permisoActualizado
-          }
-        }
-      })
+      prev.map((p) => (p.id === perfilActivo.id ? perfilModificado : p))
     )
+    await persistirPerfilEnSQL(perfilModificado)
   }
 
-  // Actualizar Nombre, Usuario o Contraseña de un perfil existente en vivo
+  // Actualizar Nombre, Usuario, Email o Contraseña en el estado local
   const actualizarCampoPerfil = (campo, valor) => {
     if (!autorizadoParaEditarPermisos || !perfilActivo) return
     setPerfilesUsuarios((prev) =>
@@ -86,8 +125,8 @@ export default function ModalConfiguracion({
     )
   }
 
-  // Crear un nuevo perfil con Usuario y Contraseña
-  const crearNuevoPerfil = (e) => {
+  // Crear un nuevo perfil en Azure SQL
+  const crearNuevoPerfil = async (e) => {
     e.preventDefault()
     if (!autorizadoParaEditarPermisos) return
     if (!nuevoNombre.trim() || !nuevoUsuario.trim() || !nuevaPassword.trim()) {
@@ -96,28 +135,16 @@ export default function ModalConfiguracion({
     }
 
     const usuarioLimpio = nuevoUsuario.trim().toLowerCase()
-    const yaExiste =
-      usuarioLimpio === credencialesMaestras?.usuario?.toLowerCase() ||
-      perfilesUsuarios.some((p) => String(p.usuario || '').toLowerCase() === usuarioLimpio)
-
-    if (yaExiste) {
-      if (mostrarToast) mostrarToast('Ese nombre de usuario ya está en uso', 'error')
-      return
-    }
-
-    const nuevoId = `perfil_${Date.now()}`
     const correoFinal = nuevoEmail.trim()
       ? nuevoEmail.trim().toLowerCase()
       : `${usuarioLimpio}@protemec.com`
 
-    const nuevoPerfil = {
-      id: nuevoId,
+    const nuevoPerfilPayload = {
       nombre: nuevoNombre.trim(),
       usuario: usuarioLimpio,
       password: nuevaPassword.trim(),
       email: correoFinal,
       rol: nuevoRol,
-      esMaestro: false,
       permisos: {
         compras: { ver: true, editar: false },
         proyectos: { ver: true, editar: false },
@@ -129,36 +156,84 @@ export default function ModalConfiguracion({
       }
     }
 
-    setPerfilesUsuarios((prev) => [...prev, nuevoPerfil])
-    setPerfilSeleccionadoId(nuevoId)
-    setNuevoNombre('')
-    setNuevoUsuario('')
-    setNuevaPassword('')
-    setNuevoEmail('')
-    setMostrarFormularioNuevo(false)
-    if (mostrarToast) mostrarToast(`Perfil "${nuevoPerfil.nombre}" creado con éxito`)
+    try {
+      setGuardandoDB(true)
+      const res = await fetch(`${API_URL}/api/usuarios`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(nuevoPerfilPayload)
+      })
+      const creado = await res.json()
+      if (!res.ok) throw new Error(creado.error || 'No se pudo crear el perfil')
+
+      setPerfilesUsuarios((prev) => [...prev, creado])
+      setPerfilSeleccionadoId(creado.id)
+      setNuevoNombre('')
+      setNuevoUsuario('')
+      setNuevaPassword('')
+      setNuevoEmail('')
+      setMostrarFormularioNuevo(false)
+      if (mostrarToast) mostrarToast(`Perfil "${creado.nombre}" guardado en Azure SQL`)
+      if (recargarDatos) recargarDatos()
+    } catch (err) {
+      if (mostrarToast) mostrarToast(err.message, 'error')
+    } finally {
+      setGuardandoDB(false)
+    }
   }
 
-  const eliminarPerfilActual = () => {
+  const eliminarPerfilActual = async () => {
     if (!autorizadoParaEditarPermisos || !perfilActivo) return
     if (perfilesUsuarios.length <= 1) {
       if (mostrarToast) mostrarToast('Debe existir al menos un perfil operativo en el sistema', 'alerta')
       return
     }
-    const filtrados = perfilesUsuarios.filter((p) => p.id !== perfilActivo.id)
-    setPerfilesUsuarios(filtrados)
-    setPerfilSeleccionadoId(filtrados[0]?.id || '')
-    if (mostrarToast) mostrarToast(`Perfil "${perfilActivo.nombre}" eliminado`, 'alerta')
+
+    try {
+      setGuardandoDB(true)
+      const res = await fetch(`${API_URL}/api/usuarios/${perfilActivo.id}`, {
+        method: 'DELETE'
+      })
+      if (!res.ok) throw new Error('No se pudo eliminar el perfil de la base de datos')
+
+      const filtrados = perfilesUsuarios.filter((p) => p.id !== perfilActivo.id)
+      setPerfilesUsuarios(filtrados)
+      setPerfilSeleccionadoId(filtrados[0]?.id || null)
+      if (mostrarToast) mostrarToast(`Perfil "${perfilActivo.nombre}" eliminado de Azure SQL`, 'alerta')
+      if (recargarDatos) recargarDatos()
+    } catch (err) {
+      if (mostrarToast) mostrarToast(err.message, 'error')
+    } finally {
+      setGuardandoDB(false)
+    }
   }
 
-  const guardarCredencialesEmergencia = (e) => {
+  const guardarCredencialesEmergencia = async (e) => {
     e.preventDefault()
-    if (!esMaestro) return
-    setCredencialesMaestras({
-      usuario: userMaestroTemp.trim(),
-      password: passMaestroTemp
-    })
-    if (mostrarToast) mostrarToast('Credenciales del Administrador Maestro actualizadas')
+    if (!esMaestro || !credencialesMaestras?.id) return
+
+    try {
+      setGuardandoDB(true)
+      const res = await fetch(`${API_URL}/api/usuarios/${credencialesMaestras.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...credencialesMaestras,
+          usuario: userMaestroTemp.trim(),
+          password: passMaestroTemp
+        })
+      })
+      const actualizado = await res.json()
+      if (!res.ok) throw new Error(actualizado.error || 'Error al actualizar cuenta maestra')
+
+      setCredencialesMaestras(actualizado)
+      if (mostrarToast) mostrarToast('Credenciales del Administrador Maestro actualizadas en Azure SQL')
+      if (recargarDatos) recargarDatos()
+    } catch (err) {
+      if (mostrarToast) mostrarToast(err.message, 'error')
+    } finally {
+      setGuardandoDB(false)
+    }
   }
 
   return createPortal(
@@ -170,7 +245,7 @@ export default function ModalConfiguracion({
             <span style={{ fontSize: '22px' }}>🛡️</span>
             <div>
               <h3 style={{ fontSize: '16px', margin: 0 }}>
-                Administración de Perfiles, Usuarios y Accesos (RBAC)
+                Administración de Perfiles, Usuarios y Accesos (Azure SQL)
               </h3>
               <span style={{ fontSize: '12px', color: '#86868b' }}>
                 Sesión actual: <strong>{usuarioActual?.nombre}</strong> ({usuarioActual?.usuario || usuarioActual?.email})
@@ -241,7 +316,7 @@ export default function ModalConfiguracion({
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <h4 style={{ fontSize: '14.5px', color: '#0071e3', margin: 0 }}>
-                      ➕ Dar de Alta Nuevo Perfil de Usuario
+                      ➕ Dar de Alta Nuevo Perfil de Usuario en Azure SQL
                     </h4>
                   </div>
 
@@ -313,8 +388,8 @@ export default function ModalConfiguracion({
                     >
                       Cancelar
                     </button>
-                    <button type="submit" className="pro-btn pro-btn-success pro-btn-sm">
-                      💾 Guardar y Configurar Permisos
+                    <button type="submit" disabled={guardandoDB} className="pro-btn pro-btn-success pro-btn-sm">
+                      {guardandoDB ? 'Guardando...' : '💾 Guardar en Azure SQL'}
                     </button>
                   </div>
                 </form>
@@ -345,7 +420,7 @@ export default function ModalConfiguracion({
                           </strong>
                         </div>
                         <div className="pro-mono" style={{ fontSize: '11px', color: '#515154', marginTop: '3px' }}>
-                          👤 Usuario: <strong>{p.usuario || p.id}</strong>
+                          👤 Usuario: <strong>{p.usuario}</strong>
                         </div>
                         <div className="pro-mono" style={{ fontSize: '10.5px', color: '#86868b' }}>
                           ✉️ {p.email}
@@ -364,13 +439,24 @@ export default function ModalConfiguracion({
                         </span>
 
                         {autorizadoParaEditarPermisos && (
-                          <button
-                            type="button"
-                            onClick={eliminarPerfilActual}
-                            className="pro-btn pro-btn-danger pro-btn-sm"
-                          >
-                            🗑️ Eliminar Perfil
-                          </button>
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                            <button
+                              type="button"
+                              disabled={guardandoDB}
+                              onClick={() => persistirPerfilEnSQL(perfilActivo, `Credenciales de "${perfilActivo.nombre}" actualizadas en Azure SQL`)}
+                              className="pro-btn pro-btn-primary pro-btn-sm"
+                            >
+                              💾 Guardar Credenciales
+                            </button>
+                            <button
+                              type="button"
+                              disabled={guardandoDB}
+                              onClick={eliminarPerfilActual}
+                              className="pro-btn pro-btn-danger pro-btn-sm"
+                            >
+                              🗑️ Eliminar Perfil
+                            </button>
+                          </div>
                         )}
                       </div>
 
@@ -488,7 +574,7 @@ export default function ModalConfiguracion({
           {pestana === 'emergencia' && esMaestro && (
             <form onSubmit={guardarCredencialesEmergencia} style={{ maxWidth: '480px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div style={{ padding: '14px 16px', borderRadius: '12px', backgroundColor: '#fffbeb', border: '1px solid #fde68a', color: '#92400e', fontSize: '12.5px' }}>
-                <strong>👑 Credenciales del Administrador Maestro:</strong> Este usuario tiene acceso total a todos los módulos y a la configuración de seguridad.
+                <strong>👑 Credenciales del Administrador Maestro:</strong> Este usuario se guarda con <code>EsMaestro = 1</code> en Azure SQL y tiene acceso total a todos los módulos.
               </div>
 
               <div>
@@ -513,8 +599,8 @@ export default function ModalConfiguracion({
                 />
               </div>
 
-              <button type="submit" className="pro-btn pro-btn-primary">
-                💾 Guardar Credenciales Maestras
+              <button type="submit" disabled={guardandoDB} className="pro-btn pro-btn-primary">
+                {guardandoDB ? 'Guardando en Azure SQL...' : '💾 Guardar Credenciales Maestras'}
               </button>
             </form>
           )}

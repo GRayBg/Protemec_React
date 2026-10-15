@@ -10,67 +10,11 @@ import GestionAlmacen3D from './components/GestionAlmacen3D'
 import GestionChatbot from './components/GestionChatbot'
 import ModalConfiguracion from './components/ModalConfiguracion'
 
+//const API_URL = import.meta.env.VITE_API_URL
 const API_URL = import.meta.env.VITE_API_URL || 'https://pruebajs-ezbja7gjf9cmg4fn.centralus-01.azurewebsites.net'
 
-const PERFILES_INICIALES = [
-  {
-    id: 'ing',
-    nombre: 'Ingeniería y Diseño CAD',
-    usuario: 'ingenieria',
-    password: 'Prote2026',
-    email: 'ingenieria@protemec.com',
-    rol: 'Ingeniería',
-    esMaestro: false,
-    permisos: {
-      compras: { ver: true, editar: false },
-      proyectos: { ver: true, editar: true },
-      clientes: { ver: false, editar: false },
-      ingenieria: { ver: true, editar: true },
-      almacen: { ver: true, editar: false },
-      chatbot: { ver: true, editar: true },
-      seguridad: { ver: false, editar: false }
-    }
-  },
-  {
-    id: 'compras',
-    nombre: 'Ejecutivo de Compras',
-    usuario: 'compras',
-    password: 'Prote2026',
-    email: 'compras@protemec.com',
-    rol: 'Compras',
-    esMaestro: false,
-    permisos: {
-      compras: { ver: true, editar: true },
-      proyectos: { ver: true, editar: false },
-      clientes: { ver: true, editar: true },
-      ingenieria: { ver: false, editar: false },
-      almacen: { ver: true, editar: false },
-      chatbot: { ver: true, editar: true },
-      seguridad: { ver: false, editar: false }
-    }
-  },
-  {
-    id: 'almacen',
-    nombre: 'Control de Almacén',
-    usuario: 'almacen',
-    password: 'Prote2026',
-    email: 'almacen@protemec.com',
-    rol: 'Almacén',
-    esMaestro: false,
-    permisos: {
-      compras: { ver: true, editar: false },
-      proyectos: { ver: false, editar: false },
-      clientes: { ver: false, editar: false },
-      ingenieria: { ver: true, editar: false },
-      almacen: { ver: true, editar: true },
-      chatbot: { ver: false, editar: false },
-      seguridad: { ver: false, editar: false }
-    }
-  }
-]
-
 const PERFIL_MAESTRO_TOTAL = {
-  id: 'master',
+  id: 1,
   nombre: 'Dirección / Perfil Maestro',
   usuario: 'admin',
   email: 'admin@protemec.com',
@@ -88,32 +32,16 @@ const PERFIL_MAESTRO_TOTAL = {
 }
 
 export default function App() {
-  // Estados de Seguridad, Perfiles y Credenciales Maestras
-  const [perfilesUsuarios, setPerfilesUsuarios] = useState(() => {
-    try {
-      const guardado = localStorage.getItem('protemec_rbac_perfiles')
-      if (!guardado) return PERFILES_INICIALES
-      const parseado = JSON.parse(guardado)
-      // Asegurar que perfiles guardados previamente tengan la propiedad 'seguridad' oculta por defecto
-      return parseado.map((p) => ({
-        ...p,
-        permisos: {
-          ...p.permisos,
-          seguridad: p.permisos?.seguridad || { ver: false, editar: false }
-        }
-      }))
-    } catch {
-      return PERFILES_INICIALES
-    }
-  })
-
-  const [credencialesMaestras, setCredencialesMaestras] = useState(() => {
-    try {
-      const guardado = localStorage.getItem('protemec_master_creds')
-      return guardado ? JSON.parse(guardado) : { usuario: 'admin', password: 'ProteMaster2026' }
-    } catch {
-      return { usuario: 'admin', password: 'ProteMaster2026' }
-    }
+  // Estados de Seguridad, Perfiles y Credenciales Maestras desde Azure SQL
+  const [perfilesUsuarios, setPerfilesUsuarios] = useState([])
+  const [credencialesMaestras, setCredencialesMaestras] = useState({
+    id: 1,
+    nombre: 'Dirección / Perfil Maestro',
+    usuario: 'admin',
+    password: '',
+    email: 'admin@protemec.com',
+    rol: 'SuperAdmin',
+    permisos: PERFIL_MAESTRO_TOTAL.permisos
   })
 
   const [usuarioActual, setUsuarioActual] = useState(() => {
@@ -131,14 +59,7 @@ export default function App() {
   const [userMaestroInput, setUserMaestroInput] = useState('')
   const [passMaestroInput, setPassMaestroInput] = useState('')
   const [errorLogin, setErrorLogin] = useState('')
-
-  useEffect(() => {
-    localStorage.setItem('protemec_rbac_perfiles', JSON.stringify(perfilesUsuarios))
-  }, [perfilesUsuarios])
-
-  useEffect(() => {
-    localStorage.setItem('protemec_master_creds', JSON.stringify(credencialesMaestras))
-  }, [credencialesMaestras])
+  const [validandoLogin, setValidandoLogin] = useState(false)
 
   useEffect(() => {
     if (usuarioActual) {
@@ -148,12 +69,20 @@ export default function App() {
     }
   }, [usuarioActual])
 
-  // Sincronizar permisos en vivo si el usuario actual es uno de los perfiles editados
+  // Sincronizar permisos en vivo si el usuario actual es uno de los perfiles en Azure SQL
   const usuarioConPermisosActualizados = useMemo(() => {
     if (!usuarioActual) return null
-    if (usuarioActual.esMaestro) return PERFIL_MAESTRO_TOTAL
-    return perfilesUsuarios.find((p) => p.id === usuarioActual.id) || usuarioActual
-  }, [usuarioActual, perfilesUsuarios])
+    if (usuarioActual.esMaestro) {
+      return {
+        ...PERFIL_MAESTRO_TOTAL,
+        id: credencialesMaestras.id || usuarioActual.id,
+        nombre: credencialesMaestras.nombre || PERFIL_MAESTRO_TOTAL.nombre,
+        usuario: credencialesMaestras.usuario || PERFIL_MAESTRO_TOTAL.usuario,
+        email: credencialesMaestras.email || PERFIL_MAESTRO_TOTAL.email
+      }
+    }
+    return perfilesUsuarios.find((p) => String(p.id) === String(usuarioActual.id)) || usuarioActual
+  }, [usuarioActual, perfilesUsuarios, credencialesMaestras])
 
   // Verificar si el usuario actual puede ver o editar el panel de Seguridad
   const puedeVerSeguridad = Boolean(
@@ -235,14 +164,16 @@ export default function App() {
       datosUbicaciones,
       datosContactos,
       datosProyectos,
-      datosIngenieria
+      datosIngenieria,
+      datosUsuarios
     ] = await Promise.all([
       fetchSeguro('/api/datos'),
       fetchSeguro('/api/clientes'),
       fetchSeguro('/api/ubicaciones'),
       fetchSeguro('/api/contactos'),
       fetchSeguro('/api/proyectos'),
-      fetchSeguro('/api/ingenieria')
+      fetchSeguro('/api/ingenieria'),
+      fetchSeguro('/api/usuarios')
     ])
 
     if (Array.isArray(datosCompras)) setCompras(datosCompras)
@@ -251,6 +182,14 @@ export default function App() {
     if (Array.isArray(datosContactos)) setContactos(datosContactos)
     if (Array.isArray(datosProyectos)) setProyectos(datosProyectos)
     if (Array.isArray(datosIngenieria)) setDisenos(datosIngenieria)
+
+    if (Array.isArray(datosUsuarios)) {
+      const adminDB = datosUsuarios.find((u) => u.esMaestro)
+      if (adminDB) {
+        setCredencialesMaestras(adminDB)
+      }
+      setPerfilesUsuarios(datosUsuarios.filter((u) => !u.esMaestro))
+    }
 
     setCargando(false)
     setSincronizando(false)
@@ -288,65 +227,83 @@ export default function App() {
     return [...new Set([...deTablaProyectos, ...deCompras])]
   }, [proyectos, compras])
 
-  // Funciones de inicio de sesión
-  const iniciarSesionEntraID = (e) => {
+  // Funciones de inicio de sesión conectadas a Azure SQL
+  const iniciarSesionEntraID = async (e) => {
     e.preventDefault()
     setErrorLogin('')
-    const correoLimpio = emailEntraInput.trim().toLowerCase()
+    setValidandoLogin(true)
 
-    const perfilEncontrado = perfilesUsuarios.find(
-      (p) => String(p.email || '').toLowerCase() === correoLimpio
-    )
-    if (!perfilEncontrado) {
-      setErrorLogin('Este correo corporativo no está registrado. Solicita acceso al Administrador.')
-      return
+    try {
+      const res = await fetch(`${API_URL}/api/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          modo: 'entra',
+          email: emailEntraInput.trim()
+        })
+      })
+
+      const data = await res.json()
+      if (!res.ok) {
+        setErrorLogin(data.error || 'Correo no autorizado')
+        return
+      }
+
+      setUsuarioActual(data)
+      setEmailEntraInput('')
+      const primerModuloPermitido = ['compras', 'proyectos', 'clientes', 'ingenieria', 'almacen', 'chatbot'].find(
+        (k) => data.esMaestro || data.permisos?.[k]?.ver
+      )
+      if (primerModuloPermitido) setModuloActivo(primerModuloPermitido)
+      mostrarToast(`Bienvenido, ${data.nombre}`)
+    } catch {
+      setErrorLogin('Error de conexión con el servidor al validar acceso')
+    } finally {
+      setValidandoLogin(false)
     }
-    setUsuarioActual(perfilEncontrado)
-    const primerModuloPermitido = ['compras', 'proyectos', 'clientes', 'ingenieria', 'almacen', 'chatbot'].find(
-      (k) => perfilEncontrado.permisos?.[k]?.ver
-    )
-    if (primerModuloPermitido) setModuloActivo(primerModuloPermitido)
-    mostrarToast(`Bienvenido, ${perfilEncontrado.nombre}`)
   }
 
-  const iniciarSesionMaestra = (e) => {
+  const iniciarSesionMaestra = async (e) => {
     e.preventDefault()
     setErrorLogin('')
-    const uInput = userMaestroInput.trim().toLowerCase()
+    setValidandoLogin(true)
 
-    // 1. Verificar si es el Administrador Maestro
-    if (
-      uInput === credencialesMaestras.usuario.toLowerCase() &&
-      passMaestroInput === credencialesMaestras.password
-    ) {
-      setUsuarioActual(PERFIL_MAESTRO_TOTAL)
+    try {
+      const res = await fetch(`${API_URL}/api/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          modo: 'maestro',
+          usuario: userMaestroInput.trim(),
+          password: passMaestroInput
+        })
+      })
+
+      const data = await res.json()
+      if (!res.ok) {
+        setErrorLogin(data.error || 'Usuario o contraseña incorrectos')
+        return
+      }
+
+      setUsuarioActual(data)
       setUserMaestroInput('')
       setPassMaestroInput('')
-      mostrarToast('Sesión iniciada como Administrador Maestro')
-      return
-    }
 
-    // 2. Verificar si es alguno de los Perfiles creados con Usuario y Contraseña
-    const perfilCoincidente = perfilesUsuarios.find(
-      (p) =>
-        (String(p.usuario || '').toLowerCase() === uInput ||
-          String(p.email || '').toLowerCase() === uInput) &&
-        p.password === passMaestroInput
-    )
-
-    if (perfilCoincidente) {
-      setUsuarioActual(perfilCoincidente)
-      setUserMaestroInput('')
-      setPassMaestroInput('')
       const primerModulo = ['compras', 'proyectos', 'clientes', 'ingenieria', 'almacen', 'chatbot'].find(
-        (k) => perfilCoincidente.permisos?.[k]?.ver
+        (k) => data.esMaestro || data.permisos?.[k]?.ver
       )
       if (primerModulo) setModuloActivo(primerModulo)
-      mostrarToast(`Bienvenido, ${perfilCoincidente.nombre}`)
-      return
-    }
 
-    setErrorLogin('Usuario o contraseña incorrectos')
+      mostrarToast(
+        data.esMaestro
+          ? 'Sesión iniciada como Administrador Maestro'
+          : `Bienvenido, ${data.nombre}`
+      )
+    } catch {
+      setErrorLogin('Error de conexión con el servidor al iniciar sesión')
+    } finally {
+      setValidandoLogin(false)
+    }
   }
 
   const cerrarSesion = () => {
@@ -574,8 +531,13 @@ export default function App() {
                   className="pro-input pro-mono"
                 />
               </div>
-              <button type="submit" className="pro-btn pro-btn-primary" style={{ padding: '11px' }}>
-                Iniciar Sesión
+              <button
+                type="submit"
+                disabled={validandoLogin}
+                className="pro-btn pro-btn-primary"
+                style={{ padding: '11px' }}
+              >
+                {validandoLogin ? 'Verificando en Azure SQL...' : 'Iniciar Sesión'}
               </button>
             </form>
           ) : (
@@ -592,8 +554,13 @@ export default function App() {
                 />
               </div>
 
-              <button type="submit" className="pro-btn pro-btn-primary" style={{ padding: '11px' }}>
-                Continuar con Microsoft Entra ID
+              <button
+                type="submit"
+                disabled={validandoLogin}
+                className="pro-btn pro-btn-primary"
+                style={{ padding: '11px' }}
+              >
+                {validandoLogin ? 'Verificando en Azure SQL...' : 'Continuar con Microsoft Entra ID'}
               </button>
             </form>
           )}
@@ -697,7 +664,7 @@ export default function App() {
           })}
         </nav>
 
-        {/* PIE DE BARRA LATERAL: SEGURIDAD SOLO PARA MAESTRO / AUTORIZADOS; LOG OUT PARA LOS DEMÁS */}
+        {/* PIE DE BARRA LATERAL */}
         <div style={estilos.sidebarFooter}>
           {puedeVerSeguridad && (
             <button
@@ -988,7 +955,7 @@ export default function App() {
           document.body
         )}
 
-      {/* MODAL DE SEGURIDAD, PERFILES RBAC Y ENTRA ID (SOLO SI TIENE PERMISO DE VER SEGURIDAD) */}
+      {/* MODAL DE SEGURIDAD, PERFILES RBAC Y ENTRA ID */}
       {puedeVerSeguridad && (
         <ModalConfiguracion
           abierto={modalConfigAbierto}
@@ -1001,6 +968,7 @@ export default function App() {
           usuarioActual={usuarioConPermisosActualizados}
           puedeDarPermisos={puedeDarPermisos}
           mostrarToast={mostrarToast}
+          recargarDatos={() => recargarDatos(true)}
         />
       )}
     </div>
