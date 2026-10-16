@@ -32,15 +32,30 @@ const config = {
   options: { encrypt: true, trustServerCertificate: false }
 }
 
-async function subirABlobYObtenerSAS(file) {
+// Contenedores dentro de tu cuenta de almacenamiento 'fotosurl'
+const CONTAINER_COMPRAS = process.env.AZURE_CONTAINER_NAME || 'pruebacompras'
+const CONTAINER_FOTOS_RH = process.env.AZURE_CONTAINER_FOTOS || 'foto-empleados'
+const CONTAINER_DOCS_RH = process.env.AZURE_CONTAINER_DOCS || 'documentos-usuarios'
+
+// -------------------------------------------------------------
+// SUBIDA A BLOB STORAGE CON VIGENCIA DE 99 AÑOS (IGUAL QUE COMPRAS)
+// -------------------------------------------------------------
+async function subirABlobYObtenerSAS(file, nombreContenedor = CONTAINER_COMPRAS) {
   if (!file) return null
-  const connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING
-  const containerName = process.env.AZURE_CONTAINER_NAME
+  const connectionString = (process.env.AZURE_STORAGE_CONNECTION_STRING || '').trim()
+  if (!connectionString) {
+    throw new Error('Falta AZURE_STORAGE_CONNECTION_STRING en el archivo .env')
+  }
+
+  const containerName = (nombreContenedor || CONTAINER_COMPRAS).trim()
   const blobServiceClient = BlobServiceClient.fromConnectionString(connectionString)
   const containerClient = blobServiceClient.getContainerClient(containerName)
   const blobName = `archivo_${Date.now()}_${file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '_')}`
   const blockBlobClient = containerClient.getBlockBlobClient(blobName)
-  await blockBlobClient.uploadData(file.buffer, { blobHTTPHeaders: { blobContentType: file.mimetype } })
+
+  await blockBlobClient.uploadData(file.buffer, {
+    blobHTTPHeaders: { blobContentType: file.mimetype }
+  })
 
   const accountName = blobServiceClient.accountName
   const matchKey = connectionString.match(/AccountKey=([^;]+)/)
@@ -48,16 +63,56 @@ async function subirABlobYObtenerSAS(file) {
   const sharedKeyCredential = new StorageSharedKeyCredential(accountName, accountKey)
 
   const sasToken = generateBlobSASQueryParameters({
-    containerName, blobName,
+    containerName,
+    blobName,
     permissions: BlobSASPermissions.parse("r"),
     startsOn: new Date(),
-    expiresOn: new Date(new Date().valueOf() + 100 * 365 * 24 * 60 * 60 * 1000)
+    expiresOn: new Date(new Date().valueOf() + 99 * 365 * 24 * 60 * 60 * 1000)
   }, sharedKeyCredential).toString()
 
   return `${blockBlobClient.url}?${sasToken}`
 }
 
-// Función auxiliar para estructurar el usuario desde SQL hacia React
+// -------------------------------------------------------------
+// VISOR INTERNO DE ARCHIVOS BLOB (EVITA ERROR XML DE PERMISOS/SAS)
+// -------------------------------------------------------------
+app.get('/api/blob-proxy', async (req, res) => {
+  const { url } = req.query
+  if (!url) return res.status(400).send('URL requerida')
+
+  try {
+    const connectionString = (process.env.AZURE_STORAGE_CONNECTION_STRING || '').trim()
+    if (!connectionString) {
+      return res.redirect(url)
+    }
+
+    const parsedUrl = new URL(url)
+    const segmentos = parsedUrl.pathname.split('/').filter(Boolean)
+    if (segmentos.length < 2) {
+      return res.redirect(url)
+    }
+
+    const containerName = decodeURIComponent(segmentos[0])
+    const blobName = decodeURIComponent(segmentos.slice(1).join('/'))
+
+    const blobServiceClient = BlobServiceClient.fromConnectionString(connectionString)
+    const containerClient = blobServiceClient.getContainerClient(containerName)
+    const blobClient = containerClient.getBlobClient(blobName)
+
+    const downloadResponse = await blobClient.download(0)
+    const contentType = downloadResponse.contentType || 'application/octet-stream'
+
+    res.setHeader('Content-Type', contentType)
+    res.setHeader('Content-Disposition', `inline; filename="${blobName}"`)
+    res.setHeader('Cache-Control', 'public, max-age=86400')
+
+    downloadResponse.readableStreamBody.pipe(res)
+  } catch (e) {
+    res.status(500).send(`No se pudo cargar el archivo desde Azure Blob Storage: ${e.message}`)
+  }
+})
+
+// Formatear usuario desde la tabla dbo.Usuarios
 function formatearUsuarioDB(row) {
   let permisosParseados = {}
   try {
@@ -75,11 +130,13 @@ function formatearUsuarioDB(row) {
     rol: row.Rol || 'Operaciones',
     esMaestro: Boolean(row.EsMaestro),
     permisos: {
+      gerencia: permisosParseados.gerencia || { ver: false, editar: false },
       compras: permisosParseados.compras || { ver: false, editar: false },
       proyectos: permisosParseados.proyectos || { ver: false, editar: false },
       clientes: permisosParseados.clientes || { ver: false, editar: false },
       ingenieria: permisosParseados.ingenieria || { ver: false, editar: false },
       almacen: permisosParseados.almacen || { ver: false, editar: false },
+      rh: permisosParseados.rh || { ver: false, editar: false },
       chatbot: permisosParseados.chatbot || { ver: false, editar: false },
       seguridad: permisosParseados.seguridad || { ver: false, editar: false }
     }
@@ -233,12 +290,11 @@ app.get('/api/datos', async (req, res) => {
 
 app.post('/api/compras', upload.single('archivo'), async (req, res) => {
   const { proveedor, costo, categoria, producto, proyecto, proyectoIdExterno, precioUnitario, cantidad, fechaCompra, estatus, material, notas } = req.body
-  let finalUrl = req.file ? await subirABlobYObtenerSAS(req.file) : null
-
   const estatusCompra = estatus || 'Pedido'
   const estatusAlmacen = estatusCompra === 'Comprado' ? 'Pendiente' : null
 
   try {
+    let finalUrl = req.file ? await subirABlobYObtenerSAS(req.file, CONTAINER_COMPRAS) : null
     let pool = await sql.connect(config)
     let proyectoID = null
 
@@ -252,7 +308,10 @@ app.post('/api/compras', upload.single('archivo'), async (req, res) => {
       } else {
         let insertarProy = await pool.request()
           .input('Nombre', sql.NVarChar, proyecto.trim())
-          .query('INSERT INTO Proyectos (NombreProyecto, Estatus) OUTPUT INSERTED.ProyectoID VALUES (@Nombre, \'Activo\')')
+          .query(`
+            INSERT INTO Proyectos (NombreProyecto, Estatus) VALUES (@Nombre, 'Activo');
+            SELECT CAST(SCOPE_IDENTITY() AS INT) AS ProyectoID;
+          `)
         proyectoID = insertarProy.recordset[0].ProyectoID
       }
     }
@@ -283,9 +342,9 @@ app.post('/api/compras', upload.single('archivo'), async (req, res) => {
 app.put('/api/compras/:id', upload.single('archivo'), async (req, res) => {
   const { id } = req.params
   const { proveedor, costo, categoria, producto, proyecto, proyectoIdExterno, precioUnitario, cantidad, fechaCompra, urlSaaS, estatus, material, notas } = req.body
-  let finalUrl = req.file ? await subirABlobYObtenerSAS(req.file) : urlSaaS
 
   try {
+    let finalUrl = req.file ? await subirABlobYObtenerSAS(req.file, CONTAINER_COMPRAS) : urlSaaS
     let pool = await sql.connect(config)
     let actual = await pool.request().input('ID', parseInt(id)).query('SELECT EstatusAlmacen FROM Compras WHERE Numero = @ID')
     let ea = actual.recordset[0]?.EstatusAlmacen
@@ -306,7 +365,10 @@ app.put('/api/compras/:id', upload.single('archivo'), async (req, res) => {
       } else {
         let insertarProy = await pool.request()
           .input('Nombre', sql.NVarChar, proyecto.trim())
-          .query('INSERT INTO Proyectos (NombreProyecto, Estatus) OUTPUT INSERTED.ProyectoID VALUES (@Nombre, \'Activo\')')
+          .query(`
+            INSERT INTO Proyectos (NombreProyecto, Estatus) VALUES (@Nombre, 'Activo');
+            SELECT CAST(SCOPE_IDENTITY() AS INT) AS ProyectoID;
+          `)
         proyectoID = insertarProy.recordset[0].ProyectoID
       }
     }
@@ -362,10 +424,10 @@ app.get('/api/ingenieria', async (req, res) => {
 app.post('/api/ingenieria', uploadIngenieria, async (req, res) => {
   const { nombre, proyecto, tipoNivel, padreID, cantidadRequerida } = req.body
 
-  let urlGLB = req.files?.archivoGlb ? await subirABlobYObtenerSAS(req.files.archivoGlb[0]) : null
-  let urlPDF = req.files?.archivoPdf ? await subirABlobYObtenerSAS(req.files.archivoPdf[0]) : null
-
   try {
+    let urlGLB = req.files?.archivoGlb ? await subirABlobYObtenerSAS(req.files.archivoGlb[0], CONTAINER_COMPRAS) : null
+    let urlPDF = req.files?.archivoPdf ? await subirABlobYObtenerSAS(req.files.archivoPdf[0], CONTAINER_COMPRAS) : null
+
     let pool = await sql.connect(config)
     await pool.request()
       .input('N', sql.NVarChar, nombre || '')
@@ -373,8 +435,8 @@ app.post('/api/ingenieria', uploadIngenieria, async (req, res) => {
       .input('TN', sql.VarChar, tipoNivel || 'Ensamble')
       .input('PID', padreID && padreID !== '' ? parseInt(padreID, 10) : null)
       .input('CR', sql.Int, parseInt(cantidadRequerida, 10) || 1)
-      .input('GLB', sql.VarChar, urlGLB)
-      .input('PDF', sql.VarChar, urlPDF)
+      .input('GLB', urlGLB)
+      .input('PDF', urlPDF)
       .query(`
         INSERT INTO Ingenieria 
           (Nombre, Proyecto, TipoNivel, PadreID, CantidadRequerida, UrlGLB, UrlPDF, EstatusAvance, FechaCreacion) 
@@ -391,10 +453,10 @@ app.put('/api/ingenieria/:id', uploadIngenieria, async (req, res) => {
   const { id } = req.params
   const { nombre, proyecto, tipoNivel, padreID, cantidadRequerida, urlGlbActual, urlPdfActual } = req.body
 
-  let urlGLB = req.files?.archivoGlb ? await subirABlobYObtenerSAS(req.files.archivoGlb[0]) : (urlGlbActual || null)
-  let urlPDF = req.files?.archivoPdf ? await subirABlobYObtenerSAS(req.files.archivoPdf[0]) : (urlPdfActual || null)
-
   try {
+    let urlGLB = req.files?.archivoGlb ? await subirABlobYObtenerSAS(req.files.archivoGlb[0], CONTAINER_COMPRAS) : (urlGlbActual || null)
+    let urlPDF = req.files?.archivoPdf ? await subirABlobYObtenerSAS(req.files.archivoPdf[0], CONTAINER_COMPRAS) : (urlPdfActual || null)
+
     let pool = await sql.connect(config)
     await pool.request()
       .input('ID', parseInt(id, 10))
@@ -403,8 +465,8 @@ app.put('/api/ingenieria/:id', uploadIngenieria, async (req, res) => {
       .input('TN', sql.VarChar, tipoNivel || 'Ensamble')
       .input('PID', padreID && padreID !== '' ? parseInt(padreID, 10) : null)
       .input('CR', sql.Int, parseInt(cantidadRequerida, 10) || 1)
-      .input('GLB', sql.VarChar, urlGLB)
-      .input('PDF', sql.VarChar, urlPDF)
+      .input('GLB', urlGLB)
+      .input('PDF', urlPDF)
       .query(`
         UPDATE Ingenieria 
         SET Nombre = @N, 
@@ -445,7 +507,7 @@ app.put('/api/ingenieria/:id/avance', async (req, res) => {
 })
 
 // -------------------------------------------------------------
-// 7. ALMACÉN E INVENTARIO
+// 7. ALMACÉN, INVENTARIO, SALIDAS Y PRÉSTAMOS DE HERRAMIENTA
 // -------------------------------------------------------------
 app.get('/api/inventario', async (req, res) => {
   try {
@@ -455,33 +517,231 @@ app.get('/api/inventario', async (req, res) => {
   } catch (e) { res.status(500).send(e.message) }
 })
 
+app.get('/api/inventario/movimientos', async (req, res) => {
+  try {
+    let pool = await sql.connect(config)
+    let r = await pool.request().query(`
+      SELECT m.*, p.Departamento, p.Puesto, p.Activo AS EmpleadoActivo
+      FROM MovimientosAlmacen m
+      LEFT JOIN PersonalRH p ON m.EmpleadoID = p.EmpleadoID
+      ORDER BY m.FechaMovimiento DESC
+    `)
+    res.json(r.recordset)
+  } catch (e) { res.status(500).send(e.message) }
+})
+
 app.post('/api/inventario/ingresar', async (req, res) => {
-  const { compraID, modo, inventarioIDExistente, nombreProducto, ubicacion3D, cantidad } = req.body
+  const { compraID, modo, inventarioIDExistente, nombreProducto, ubicacion3D, cantidad, notas } = req.body
+  const cantNum = parseInt(cantidad, 10) || 1
+
   try {
     let pool = await sql.connect(config)
     let tx = new sql.Transaction(pool)
     await tx.begin()
     try {
-      let targetID = inventarioIDExistente
+      let targetID = inventarioIDExistente ? parseInt(inventarioIDExistente, 10) : null
+      let nombreFinal = (nombreProducto || '').trim()
+
       if (modo === 'nuevo' || !targetID) {
         let r = await tx.request()
-          .input('N', nombreProducto).input('U', ubicacion3D).input('S', cantidad)
-          .query('INSERT INTO InventarioAlmacen (NombreProducto, Ubicacion3D, Estado, CantidadStock) OUTPUT INSERTED.ID VALUES (@N, @U, \'Almacenado\', @S)')
-        targetID = r.recordset[0].ID
+          .input('N', sql.NVarChar, nombreFinal)
+          .input('U', sql.NVarChar, ubicacion3D || 'Pieza1')
+          .input('S', sql.Int, cantNum)
+          .query(`
+            INSERT INTO InventarioAlmacen (NombreProducto, Ubicacion3D, Estado, CantidadStock, FechaActualizacion) 
+            VALUES (@N, @U, 'Almacenado', @S, SYSDATETIME());
+            SELECT CAST(SCOPE_IDENTITY() AS INT) AS NuevoID;
+          `)
+        targetID = r.recordset[0].NuevoID
       } else {
-        await tx.request().input('ID', targetID).input('S', cantidad).input('U', ubicacion3D)
-          .query('UPDATE InventarioAlmacen SET CantidadStock = CantidadStock + @S, Ubicacion3D = @U WHERE ID = @ID')
+        await tx.request()
+          .input('ID', sql.Int, targetID)
+          .input('S', sql.Int, cantNum)
+          .input('U', sql.NVarChar, ubicacion3D || null)
+          .query(`
+            UPDATE InventarioAlmacen 
+            SET CantidadStock = ISNULL(CantidadStock, 0) + @S, 
+                Ubicacion3D = COALESCE(@U, Ubicacion3D),
+                Estado = 'Almacenado',
+                FechaActualizacion = SYSDATETIME()
+            WHERE ID = @ID
+          `)
+
+        let rProd = await tx.request()
+          .input('ID', sql.Int, targetID)
+          .query('SELECT NombreProducto FROM InventarioAlmacen WHERE ID = @ID')
+        if (rProd.recordset.length > 0) {
+          nombreFinal = rProd.recordset[0].NombreProducto
+        }
       }
+
       if (compraID) {
-        await tx.request().input('CID', compraID).input('IID', targetID).input('C', cantidad)
+        await tx.request()
+          .input('CID', sql.Int, parseInt(compraID, 10))
+          .input('IID', sql.Int, targetID)
+          .input('C', sql.Int, cantNum)
           .query('INSERT INTO DetalleRecepcionCompras (CompraID, InventarioID, CantidadRecibida) VALUES (@CID, @IID, @C)')
-        await tx.request().input('ID', compraID)
+
+        await tx.request()
+          .input('ID', sql.Int, parseInt(compraID, 10))
           .query("UPDATE Compras SET EstatusAlmacen = 'Recibido en Almacén' WHERE Numero = @ID")
       }
+
+      await tx.request()
+        .input('IID', sql.Int, targetID)
+        .input('NP', sql.NVarChar, nombreFinal || 'Artículo')
+        .input('TM', sql.VarChar, compraID ? 'Recepcion Compra' : 'Entrada Manual')
+        .input('Cant', sql.Int, cantNum)
+        .input('Not', sql.NVarChar, notas || (compraID ? `Ingreso desde Compra #${compraID}` : 'Alta / suma directa en almacén'))
+        .query(`
+          IF OBJECT_ID('dbo.MovimientosAlmacen', 'U') IS NOT NULL
+          BEGIN
+            INSERT INTO MovimientosAlmacen (InventarioID, NombreProducto, TipoMovimiento, Cantidad, Notas)
+            VALUES (@IID, @NP, @TM, @Cant, @Not)
+          END
+        `)
+
       await tx.commit()
-      res.json({ success: true })
-    } catch (err) { await tx.rollback(); throw err }
-  } catch (e) { res.status(500).send(e.message) }
+      res.json({ success: true, id: targetID })
+    } catch (err) {
+      await tx.rollback()
+      throw err
+    }
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+app.post('/api/inventario/salida', async (req, res) => {
+  const { inventarioID, tipoMovimiento, cantidad, empleadoID, proyecto, notas } = req.body
+  const cantSalida = parseInt(cantidad, 10) || 1
+
+  try {
+    let pool = await sql.connect(config)
+    let tx = new sql.Transaction(pool)
+    await tx.begin()
+
+    try {
+      let empRes = await tx.request()
+        .input('EID', sql.Int, parseInt(empleadoID, 10))
+        .query('SELECT EmpleadoID, NombreCompleto, Activo FROM PersonalRH WHERE EmpleadoID = @EID')
+
+      if (empRes.recordset.length === 0 || !empRes.recordset[0].Activo) {
+        throw new Error('El colaborador seleccionado no existe o está dado de baja en RH.')
+      }
+      const empleado = empRes.recordset[0]
+
+      let invRes = await tx.request()
+        .input('IID', sql.Int, parseInt(inventarioID, 10))
+        .query('SELECT ID, NombreProducto, CantidadStock FROM InventarioAlmacen WHERE ID = @IID')
+
+      if (invRes.recordset.length === 0) {
+        throw new Error('El artículo no existe en el inventario.')
+      }
+      const item = invRes.recordset[0]
+      if (item.CantidadStock < cantSalida) {
+        throw new Error(`Stock insuficiente para "${item.NombreProducto}". Disponible: ${item.CantidadStock}`)
+      }
+
+      const nuevoStock = item.CantidadStock - cantSalida
+      const esPrestamo = tipoMovimiento === 'Prestamo Herramienta'
+      const nuevoEstadoItem = nuevoStock === 0
+        ? (esPrestamo ? 'En Préstamo' : 'Agotado')
+        : 'Almacenado'
+
+      await tx.request()
+        .input('IID', sql.Int, item.ID)
+        .input('NuevoStock', sql.Int, nuevoStock)
+        .input('Estado', sql.NVarChar, nuevoEstadoItem)
+        .query(`
+          UPDATE InventarioAlmacen
+          SET CantidadStock = @NuevoStock,
+              Estado = @Estado,
+              FechaActualizacion = SYSDATETIME()
+          WHERE ID = @IID
+        `)
+
+      await tx.request()
+        .input('IID', sql.Int, item.ID)
+        .input('NP', sql.NVarChar, item.NombreProducto)
+        .input('TM', sql.VarChar, esPrestamo ? 'Prestamo Herramienta' : 'Salida Consumo')
+        .input('Cant', sql.Int, cantSalida)
+        .input('EID', sql.Int, empleado.EmpleadoID)
+        .input('NEmp', sql.NVarChar, empleado.NombreCompleto)
+        .input('Proy', sql.NVarChar, proyecto || null)
+        .input('Not', sql.NVarChar, notas || null)
+        .input('EstP', sql.VarChar, esPrestamo ? 'Prestado' : null)
+        .query(`
+          INSERT INTO MovimientosAlmacen
+            (InventarioID, NombreProducto, TipoMovimiento, Cantidad, EmpleadoID, NombreEmpleado, Proyecto, Notas, EstatusPrestamo)
+          VALUES
+            (@IID, @NP, @TM, @Cant, @EID, @NEmp, @Proy, @Not, @EstP)
+        `)
+
+      await tx.commit()
+      res.json({ mensaje: esPrestamo ? 'Préstamo de herramienta registrado' : 'Salida de almacén registrada' })
+    } catch (err) {
+      await tx.rollback()
+      return res.status(400).json({ error: err.message })
+    }
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+app.put('/api/inventario/prestamo/:movimientoId/devolver', async (req, res) => {
+  const { movimientoId } = req.params
+  const { notasDevolucion } = req.body
+
+  try {
+    let pool = await sql.connect(config)
+    let tx = new sql.Transaction(pool)
+    await tx.begin()
+
+    try {
+      let movRes = await tx.request()
+        .input('MID', sql.Int, parseInt(movimientoId, 10))
+        .query('SELECT * FROM MovimientosAlmacen WHERE MovimientoID = @MID')
+
+      if (movRes.recordset.length === 0) {
+        throw new Error('Registro de préstamo no encontrado.')
+      }
+      const mov = movRes.recordset[0]
+      if (mov.EstatusPrestamo === 'Devuelto') {
+        throw new Error('Esta herramienta ya fue marcada como devuelta anteriormente.')
+      }
+
+      await tx.request()
+        .input('MID', sql.Int, mov.MovimientoID)
+        .input('Not', sql.NVarChar, notasDevolucion ? `${mov.Notas || ''} | Devuelto: ${notasDevolucion}` : mov.Notas)
+        .query(`
+          UPDATE MovimientosAlmacen
+          SET EstatusPrestamo = 'Devuelto',
+              FechaDevolucion = GETDATE(),
+              Notas = @Not
+          WHERE MovimientoID = @MID
+        `)
+
+      await tx.request()
+        .input('IID', sql.Int, mov.InventarioID)
+        .input('Cant', sql.Int, mov.Cantidad)
+        .query(`
+          UPDATE InventarioAlmacen
+          SET CantidadStock = ISNULL(CantidadStock, 0) + @Cant,
+              Estado = 'Almacenado',
+              FechaActualizacion = SYSDATETIME()
+          WHERE ID = @IID
+        `)
+
+      await tx.commit()
+      res.json({ mensaje: 'Herramienta devuelta y sumada nuevamente al stock' })
+    } catch (err) {
+      await tx.rollback()
+      return res.status(400).json({ error: err.message })
+    }
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
 })
 
 // -------------------------------------------------------------
@@ -619,6 +879,353 @@ app.delete('/api/usuarios/:id', async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: e.message })
   }
+})
+
+// -------------------------------------------------------------
+// 9. RECURSOS HUMANOS (FOTOS EN 'foto-empleados' Y ARCHIVOS EN 'documentos-usuarios')
+// -------------------------------------------------------------
+app.get('/api/rh/personal', async (req, res) => {
+  try {
+    let pool = await sql.connect(config)
+    let r = await pool.request().query(`
+      SELECT p.*,
+        COALESCE(p.URL_SaaS, p.FotoURL) AS FotoActivaURL,
+        (SELECT AVG(PromedioGlobal) FROM EvaluacionesKPI k WHERE k.EmpleadoID = p.EmpleadoID) AS PromedioHistoricoKPI,
+        (SELECT COUNT(*) FROM MovimientosAlmacen m WHERE m.EmpleadoID = p.EmpleadoID AND m.EstatusPrestamo = 'Prestado') AS HerramientasPrestadas,
+        (SELECT COUNT(*) FROM DocumentosEmpleadosRH d WHERE d.EmpleadoID = p.EmpleadoID AND d.Activo = 1) AS TotalDocumentos
+      FROM PersonalRH p
+      ORDER BY p.Activo DESC, p.NombreCompleto ASC
+    `)
+    res.json(r.recordset)
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+app.post('/api/rh/personal', upload.single('foto'), async (req, res) => {
+  const { nombreCompleto, telefono, departamento, puesto, fechaInicio, fechaNacimiento } = req.body
+  try {
+    let urlSaaSFoto = req.file ? await subirABlobYObtenerSAS(req.file, CONTAINER_FOTOS_RH) : null
+    let pool = await sql.connect(config)
+
+    let r = await pool.request()
+      .input('Nombre', sql.NVarChar, (nombreCompleto || '').trim())
+      .input('Tel', sql.NVarChar, telefono || null)
+      .input('Dep', sql.NVarChar, departamento || 'Operaciones')
+      .input('Puesto', sql.NVarChar, puesto || null)
+      .input('FInicio', sql.Date, fechaInicio || new Date())
+      .input('FNac', sql.Date, fechaNacimiento || null)
+      .input('URL', urlSaaSFoto)
+      .query(`
+        INSERT INTO PersonalRH (NombreCompleto, Telefono, Departamento, Puesto, FechaInicio, FechaNacimiento, Activo, URL_SaaS, FotoURL)
+        VALUES (@Nombre, @Tel, @Dep, @Puesto, @FInicio, @FNac, 1, @URL, @URL);
+        SELECT CAST(SCOPE_IDENTITY() AS INT) AS NuevoEmpleadoID;
+      `)
+
+    const nuevoId = r.recordset[0].NuevoEmpleadoID
+
+    if (urlSaaSFoto) {
+      await pool.request()
+        .input('EID', sql.Int, nuevoId)
+        .input('Titulo', sql.NVarChar, 'Fotografía de Perfil Inicial')
+        .input('Tipo', sql.NVarChar, 'Fotografía de Perfil')
+        .input('URL', urlSaaSFoto)
+        .input('NombreOrig', sql.NVarChar, req.file.originalname)
+        .query(`
+          INSERT INTO DocumentosEmpleadosRH (EmpleadoID, TituloDocumento, TipoDocumento, FechaDocumento, URL_SaaS, ArchivoURL, NombreArchivo, Activo)
+          VALUES (@EID, @Titulo, @Tipo, CAST(GETDATE() AS DATE), @URL, @URL, @NombreOrig, 1)
+        `)
+    }
+
+    res.json({ EmpleadoID: nuevoId, URL_SaaS: urlSaaSFoto, mensaje: 'Colaborador registrado correctamente' })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+app.put('/api/rh/personal/:id', upload.single('foto'), async (req, res) => {
+  const { id } = req.params
+  const { nombreCompleto, telefono, departamento, puesto, fechaInicio, fechaNacimiento, activo, fechaSalida, motivoSalida, fotoUrlActual } = req.body
+  try {
+    let nuevaUrlSaaS = req.file ? await subirABlobYObtenerSAS(req.file, CONTAINER_FOTOS_RH) : (fotoUrlActual || null)
+    let pool = await sql.connect(config)
+    const estaActivo = activo === true || activo === 1 || activo === 'true'
+    const empIdNum = parseInt(id, 10)
+
+    await pool.request()
+      .input('ID', sql.Int, empIdNum)
+      .input('Nombre', sql.NVarChar, (nombreCompleto || '').trim())
+      .input('Tel', sql.NVarChar, telefono || null)
+      .input('Dep', sql.NVarChar, departamento || 'Operaciones')
+      .input('Puesto', sql.NVarChar, puesto || null)
+      .input('FInicio', sql.Date, fechaInicio || null)
+      .input('FNac', sql.Date, fechaNacimiento || null)
+      .input('Activo', sql.Bit, estaActivo ? 1 : 0)
+      .input('FSalida', sql.Date, !estaActivo ? (fechaSalida || new Date()) : null)
+      .input('Motivo', sql.NVarChar, !estaActivo ? (motivoSalida || null) : null)
+      .input('URL', nuevaUrlSaaS)
+      .query(`
+        UPDATE PersonalRH
+        SET NombreCompleto = @Nombre,
+            Telefono = @Tel,
+            Departamento = @Dep,
+            Puesto = @Puesto,
+            FechaInicio = @FInicio,
+            FechaNacimiento = @FNac,
+            Activo = @Activo,
+            FechaSalida = @FSalida,
+            MotivoSalida = @Motivo,
+            URL_SaaS = COALESCE(@URL, URL_SaaS),
+            FotoURL = COALESCE(@URL, FotoURL)
+        WHERE EmpleadoID = @ID
+      `)
+
+    if (req.file && nuevaUrlSaaS) {
+      await pool.request()
+        .input('EID', sql.Int, empIdNum)
+        .input('Titulo', sql.NVarChar, 'Actualización de Fotografía de Perfil')
+        .input('Tipo', sql.NVarChar, 'Fotografía de Perfil')
+        .input('URL', nuevaUrlSaaS)
+        .input('NombreOrig', sql.NVarChar, req.file.originalname)
+        .query(`
+          INSERT INTO DocumentosEmpleadosRH (EmpleadoID, TituloDocumento, TipoDocumento, FechaDocumento, URL_SaaS, ArchivoURL, NombreArchivo, Activo)
+          VALUES (@EID, @Titulo, @Tipo, CAST(GETDATE() AS DATE), @URL, @URL, @NombreOrig, 1)
+        `)
+    }
+
+    res.json({ EmpleadoID: empIdNum, URL_SaaS: nuevaUrlSaaS, mensaje: 'Expediente actualizado' })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+app.post('/api/rh/personal/:id/foto', upload.single('foto'), async (req, res) => {
+  const { id } = req.params
+  try {
+    if (!req.file) return res.status(400).json({ error: 'Selecciona una imagen válida' })
+    const urlSaaSFoto = await subirABlobYObtenerSAS(req.file, CONTAINER_FOTOS_RH)
+    const empIdNum = parseInt(id, 10)
+
+    let pool = await sql.connect(config)
+    await pool.request()
+      .input('ID', sql.Int, empIdNum)
+      .input('URL', urlSaaSFoto)
+      .query('UPDATE PersonalRH SET URL_SaaS = @URL, FotoURL = @URL WHERE EmpleadoID = @ID')
+
+    await pool.request()
+      .input('EID', sql.Int, empIdNum)
+      .input('Titulo', sql.NVarChar, 'Fotografía de Empleado')
+      .input('Tipo', sql.NVarChar, 'Fotografía de Perfil')
+      .input('URL', urlSaaSFoto)
+      .input('NombreOrig', sql.NVarChar, req.file.originalname)
+      .query(`
+        INSERT INTO DocumentosEmpleadosRH (EmpleadoID, TituloDocumento, TipoDocumento, FechaDocumento, URL_SaaS, ArchivoURL, NombreArchivo, Activo)
+        VALUES (@EID, @Titulo, @Tipo, CAST(GETDATE() AS DATE), @URL, @URL, @NombreOrig, 1)
+      `)
+
+    res.json({ fotoUrl: urlSaaSFoto, URL_SaaS: urlSaaSFoto, mensaje: 'Fotografía actualizada' })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+app.get('/api/rh/personal/:id/documentos', async (req, res) => {
+  const { id } = req.params
+  try {
+    let pool = await sql.connect(config)
+    let r = await pool.request()
+      .input('EID', sql.Int, parseInt(id, 10))
+      .query(`
+        SELECT 
+          DocumentoID,
+          EmpleadoID,
+          TituloDocumento,
+          TipoDocumento,
+          FechaDocumento,
+          FechaVencimiento,
+          Notas,
+          COALESCE(URL_SaaS, ArchivoURL) AS URL_SaaS,
+          NombreArchivo,
+          Activo,
+          FechaSubida,
+          FechaBajaERP
+        FROM DocumentosEmpleadosRH 
+        WHERE EmpleadoID = @EID 
+        ORDER BY Activo DESC, FechaSubida DESC
+      `)
+    res.json(r.recordset)
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+app.post('/api/rh/personal/:id/documentos', upload.single('archivo'), async (req, res) => {
+  const { id } = req.params
+  const { tituloDocumento, tipoDocumento, fechaDocumento, fechaVencimiento, notas } = req.body
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Debes adjuntar un archivo (PDF, imagen, documento)' })
+    }
+    const urlSaaS = await subirABlobYObtenerSAS(req.file, CONTAINER_DOCS_RH)
+
+    let pool = await sql.connect(config)
+    let r = await pool.request()
+      .input('EID', sql.Int, parseInt(id, 10))
+      .input('Titulo', sql.NVarChar, (tituloDocumento || req.file.originalname).trim())
+      .input('Tipo', sql.NVarChar, tipoDocumento || 'General')
+      .input('FDoc', sql.Date, fechaDocumento || new Date())
+      .input('FVenc', sql.Date, fechaVencimiento || null)
+      .input('Notas', sql.NVarChar, notas || null)
+      .input('URL', urlSaaS)
+      .input('NombreOrig', sql.NVarChar, req.file.originalname)
+      .query(`
+        INSERT INTO DocumentosEmpleadosRH
+          (EmpleadoID, TituloDocumento, TipoDocumento, FechaDocumento, FechaVencimiento, Notas, URL_SaaS, ArchivoURL, NombreArchivo, Activo)
+        VALUES
+          (@EID, @Titulo, @Tipo, @FDoc, @FVenc, @Notas, @URL, @URL, @NombreOrig, 1);
+        SELECT CAST(SCOPE_IDENTITY() AS INT) AS NuevoDocID;
+      `)
+
+    const nuevoDocId = r.recordset[0].NuevoDocID
+    let docInsertado = await pool.request()
+      .input('DID', sql.Int, nuevoDocId)
+      .query(`
+        SELECT 
+          DocumentoID,
+          EmpleadoID,
+          TituloDocumento,
+          TipoDocumento,
+          FechaDocumento,
+          FechaVencimiento,
+          Notas,
+          COALESCE(URL_SaaS, ArchivoURL) AS URL_SaaS,
+          NombreArchivo,
+          Activo,
+          FechaSubida
+        FROM DocumentosEmpleadosRH 
+        WHERE DocumentoID = @DID
+      `)
+
+    res.json(docInsertado.recordset[0])
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+
+// Actualizar manualmente la fecha de término / referencia de un permiso o documento
+app.put('/api/rh/documentos/:docId/vigencia', async (req, res) => {
+  const { docId } = req.params
+  const { fechaVencimiento } = req.body
+  try {
+    let pool = await sql.connect(config)
+    await pool.request()
+      .input('DID', sql.Int, parseInt(docId, 10))
+      .input('FVenc', sql.Date, fechaVencimiento || null)
+      .query('UPDATE DocumentosEmpleadosRH SET FechaVencimiento = @FVenc WHERE DocumentoID = @DID')
+    res.json({ mensaje: 'Fecha de término actualizada' })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// Oculta el documento en el ERP pero conserva el registro y el link URL_SaaS en Azure SQL
+app.delete('/api/rh/documentos/:docId', async (req, res) => {
+  const { docId } = req.params
+  try {
+    let pool = await sql.connect(config)
+    await pool.request()
+      .input('DID', sql.Int, parseInt(docId, 10))
+      .query(`
+        UPDATE DocumentosEmpleadosRH 
+        SET Activo = 0, 
+            FechaBajaERP = GETDATE() 
+        WHERE DocumentoID = @DID
+      `)
+    res.json({ mensaje: 'Documento archivado' })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+app.get('/api/rh/kpis', async (req, res) => {
+  try {
+    let pool = await sql.connect(config)
+    let r = await pool.request().query(`
+      SELECT k.*, p.NombreCompleto, p.Departamento, p.Puesto, p.Activo, COALESCE(p.URL_SaaS, p.FotoURL) AS FotoURL
+      FROM EvaluacionesKPI k
+      INNER JOIN PersonalRH p ON k.EmpleadoID = p.EmpleadoID
+      ORDER BY k.PeriodoMes DESC, k.PromedioGlobal DESC
+    `)
+    res.json(r.recordset)
+  } catch (e) { res.status(500).send(e.message) }
+})
+
+app.post('/api/rh/kpis', async (req, res) => {
+  const {
+    empleadoID,
+    periodoMes,
+    kpiPuntualidad,
+    kpiCalidad,
+    kpiProductividad,
+    kpiSeguridad5S,
+    kpiColaboracion,
+    metasCumplidas,
+    metasAsignadas,
+    comentarios
+  } = req.body
+
+  try {
+    let pool = await sql.connect(config)
+    let existe = await pool.request()
+      .input('EID', sql.Int, parseInt(empleadoID, 10))
+      .input('Mes', sql.VarChar, periodoMes)
+      .query('SELECT EvaluacionID FROM EvaluacionesKPI WHERE EmpleadoID = @EID AND PeriodoMes = @Mes')
+
+    if (existe.recordset.length > 0) {
+      await pool.request()
+        .input('EvalID', sql.Int, existe.recordset[0].EvaluacionID)
+        .input('P1', sql.Decimal(5, 2), parseFloat(kpiPuntualidad) || 0)
+        .input('P2', sql.Decimal(5, 2), parseFloat(kpiCalidad) || 0)
+        .input('P3', sql.Decimal(5, 2), parseFloat(kpiProductividad) || 0)
+        .input('P4', sql.Decimal(5, 2), parseFloat(kpiSeguridad5S) || 0)
+        .input('P5', sql.Decimal(5, 2), parseFloat(kpiColaboracion) || 0)
+        .input('MC', sql.Int, parseInt(metasCumplidas, 10) || 0)
+        .input('MA', sql.Int, parseInt(metasAsignadas, 10) || 1)
+        .input('Com', sql.NVarChar, comentarios || null)
+        .query(`
+          UPDATE EvaluacionesKPI
+          SET KpiPuntualidad = @P1,
+              KpiCalidad = @P2,
+              KpiProductividad = @P3,
+              KpiSeguridad5S = @P4,
+              KpiColaboracion = @P5,
+              MetasCumplidas = @MC,
+              MetasAsignadas = @MA,
+              Comentarios = @Com,
+              FechaEvaluacion = GETDATE()
+          WHERE EvaluacionID = @EvalID
+        `)
+      return res.json({ mensaje: 'Evaluación mensual actualizada' })
+    } else {
+      await pool.request()
+        .input('EID', sql.Int, parseInt(empleadoID, 10))
+        .input('Mes', sql.VarChar, periodoMes)
+        .input('P1', sql.Decimal(5, 2), parseFloat(kpiPuntualidad) || 0)
+        .input('P2', sql.Decimal(5, 2), parseFloat(kpiCalidad) || 0)
+        .input('P3', sql.Decimal(5, 2), parseFloat(kpiProductividad) || 0)
+        .input('P4', sql.Decimal(5, 2), parseFloat(kpiSeguridad5S) || 0)
+        .input('P5', sql.Decimal(5, 2), parseFloat(kpiColaboracion) || 0)
+        .input('MC', sql.Int, parseInt(metasCumplidas, 10) || 0)
+        .input('MA', sql.Int, parseInt(metasAsignadas, 10) || 1)
+        .input('Com', sql.NVarChar, comentarios || null)
+        .query(`
+          INSERT INTO EvaluacionesKPI
+            (EmpleadoID, PeriodoMes, KpiPuntualidad, KpiCalidad, KpiProductividad, KpiSeguridad5S, KpiColaboracion, MetasCumplidas, MetasAsignadas, Comentarios)
+          VALUES
+            (@EID, @Mes, @P1, @P2, @P3, @P4, @P5, @MC, @MA, @Com)
+        `)
+      return res.json({ mensaje: 'Evaluación KPI registrada correctamente' })
+    }
+  } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 const PORT = process.env.PORT || 3000

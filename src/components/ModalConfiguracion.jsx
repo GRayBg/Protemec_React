@@ -2,15 +2,16 @@ import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 
 const MODULOS_SISTEMA = [
+  { id: 'gerencia', label: '📊 Dirección y Alto Nivel', desc: 'Análisis gerencial con gráficas de costos, proveedores y KPIs' },
   { id: 'compras', label: '💳 Compras y Finanzas', desc: 'Consulta de órdenes, costos, proveedores y facturas PDF' },
   { id: 'proyectos', label: '📁 Portafolio de Proyectos', desc: 'Catálogo de folios externos, clientes y estatus de obra' },
   { id: 'clientes', label: '🏢 Clientes y Directorio', desc: 'Empresas, plantas industriales y contactos' },
   { id: 'ingenieria', label: '⚙️ Ingeniería y BOM 3D', desc: 'Visor CAD 3D, árbol BOM, Kanban y Calendario MS Project' },
-  { id: 'almacen', label: '📦 Almacén Digital 3D', desc: 'Stock físico, recepción de compras y gemelo 3D' },
+  { id: 'almacen', label: '📦 Almacén Digital 3D', desc: 'Entradas manuales, salidas, préstamos de herramienta y visor 3D' },
+  { id: 'rh', label: '👥 Recursos Humanos y KPIs', desc: 'Expedientes de personal (activo/baja) y evaluación mensual de rendimiento' },
   { id: 'chatbot', label: '✨ Asistente IA', desc: 'Consultas rápidas mediante inteligencia artificial' },
   { id: 'seguridad', label: '🛡️ Seguridad y Gestión de Perfiles', desc: 'Permite ver este panel de seguridad y dar permisos a otros usuarios' }
 ]
-
 export default function ModalConfiguracion({
   abierto,
   alCerrar,

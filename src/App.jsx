@@ -7,6 +7,8 @@ import GestionProyectos from './components/GestionProyectos'
 import GestionIngenieria from './components/GestionIngenieria'
 import GestionAlmacenInventario from './components/GestionAlmacenInventario'
 import GestionAlmacen3D from './components/GestionAlmacen3D'
+import GestionRH from './components/GestionRH'
+import GestionGerencia from './components/GestionGerencia'
 import GestionChatbot from './components/GestionChatbot'
 import ModalConfiguracion from './components/ModalConfiguracion'
 
@@ -21,11 +23,13 @@ const PERFIL_MAESTRO_TOTAL = {
   rol: 'SuperAdmin',
   esMaestro: true,
   permisos: {
+    gerencia: { ver: true, editar: true },
     compras: { ver: true, editar: true },
     proyectos: { ver: true, editar: true },
     clientes: { ver: true, editar: true },
     ingenieria: { ver: true, editar: true },
     almacen: { ver: true, editar: true },
+    rh: { ver: true, editar: true },
     chatbot: { ver: true, editar: true },
     seguridad: { ver: true, editar: true }
   }
@@ -108,6 +112,8 @@ export default function App() {
   const [contactos, setContactos] = useState([])
   const [proyectos, setProyectos] = useState([])
   const [disenos, setDisenos] = useState([])
+  const [personalRH, setPersonalRH] = useState([])
+  const [evaluacionesKPI, setEvaluacionesKPI] = useState([])
   const [cargando, setCargando] = useState(true)
   const [sincronizando, setSincronizando] = useState(false)
 
@@ -165,7 +171,9 @@ export default function App() {
       datosContactos,
       datosProyectos,
       datosIngenieria,
-      datosUsuarios
+      datosUsuarios,
+      datosPersonalRH,
+      datosKpis
     ] = await Promise.all([
       fetchSeguro('/api/datos'),
       fetchSeguro('/api/clientes'),
@@ -173,7 +181,9 @@ export default function App() {
       fetchSeguro('/api/contactos'),
       fetchSeguro('/api/proyectos'),
       fetchSeguro('/api/ingenieria'),
-      fetchSeguro('/api/usuarios')
+      fetchSeguro('/api/usuarios'),
+      fetchSeguro('/api/rh/personal'),
+      fetchSeguro('/api/rh/kpis')
     ])
 
     if (Array.isArray(datosCompras)) setCompras(datosCompras)
@@ -182,6 +192,8 @@ export default function App() {
     if (Array.isArray(datosContactos)) setContactos(datosContactos)
     if (Array.isArray(datosProyectos)) setProyectos(datosProyectos)
     if (Array.isArray(datosIngenieria)) setDisenos(datosIngenieria)
+    if (Array.isArray(datosPersonalRH)) setPersonalRH(datosPersonalRH)
+    if (Array.isArray(datosKpis)) setEvaluacionesKPI(datosKpis)
 
     if (Array.isArray(datosUsuarios)) {
       const adminDB = datosUsuarios.find((u) => u.esMaestro)
@@ -251,7 +263,7 @@ export default function App() {
 
       setUsuarioActual(data)
       setEmailEntraInput('')
-      const primerModuloPermitido = ['compras', 'proyectos', 'clientes', 'ingenieria', 'almacen', 'chatbot'].find(
+      const primerModuloPermitido = ['gerencia', 'compras', 'proyectos', 'clientes', 'ingenieria', 'almacen', 'rh', 'chatbot'].find(
         (k) => data.esMaestro || data.permisos?.[k]?.ver
       )
       if (primerModuloPermitido) setModuloActivo(primerModuloPermitido)
@@ -289,7 +301,7 @@ export default function App() {
       setUserMaestroInput('')
       setPassMaestroInput('')
 
-      const primerModulo = ['compras', 'proyectos', 'clientes', 'ingenieria', 'almacen', 'chatbot'].find(
+      const primerModulo = ['gerencia', 'compras', 'proyectos', 'clientes', 'ingenieria', 'almacen', 'rh', 'chatbot'].find(
         (k) => data.esMaestro || data.permisos?.[k]?.ver
       )
       if (primerModulo) setModuloActivo(primerModulo)
@@ -467,7 +479,7 @@ export default function App() {
     })
   }
 
-  // PANTALLA DE LOGIN (SI NO HAY SESIÓN ACTIVA)
+  // PANTALLA DE LOGIN
   if (!usuarioConPermisosActualizados) {
     return (
       <div style={estilos.loginScreen}>
@@ -572,19 +584,26 @@ export default function App() {
   const permisosModuloActual = usuarioConPermisosActualizados.permisos?.[moduloActivo] || { ver: true, editar: true }
   const puedeEditarModuloActual = Boolean(usuarioConPermisosActualizados.esMaestro || permisosModuloActual.editar)
 
+  // Menú con los módulos autorizados (incluyendo Dirección y Recursos Humanos)
   const menuNavegacion = [
+    { id: 'gerencia', label: 'Dirección y KPIs', icono: '📊', badge: null },
     { id: 'compras', label: 'Compras y Finanzas', icono: '💳', badge: compras.length },
     { id: 'proyectos', label: 'Proyectos', icono: '📁', badge: proyectos.length },
     { id: 'clientes', label: 'Clientes y Directorio', icono: '🏢', badge: clientes.length },
     { id: 'ingenieria', label: 'Ingeniería y BOM 3D', icono: '⚙️', badge: disenos.length },
     { id: 'almacen', label: 'Almacén Digital 3D', icono: '📦', badge: null },
+    { id: 'rh', label: 'Recursos Humanos', icono: '👥', badge: personalRH.filter((p) => p.Activo).length },
     { id: 'chatbot', label: 'Asistente IA', icono: '✨', badge: 'AI' }
   ].filter((item) => usuarioConPermisosActualizados.esMaestro || usuarioConPermisosActualizados.permisos?.[item.id]?.ver)
 
   const infoEncabezado = {
+    gerencia: {
+      titulo: 'Tablero de Dirección y Alto Nivel',
+      subtitulo: 'Costos consolidados por proyecto, proveedores estratégicos y rendimiento global'
+    },
     compras: {
       titulo: 'Módulo de Compras y Cotizaciones',
-      subtitulo: 'Control financiero, órdenes de compra y archivos en Azure Blob Storage'
+      subtitulo: 'Control financiero, órdenes de compra y facturas en Azure Blob Storage'
     },
     proyectos: {
       titulo: 'Portafolio de Proyectos',
@@ -600,7 +619,11 @@ export default function App() {
     },
     almacen: {
       titulo: 'Gemelo Digital de Almacén e Inventario',
-      subtitulo: 'Recepción de mercancía y localización espacial en tiempo real'
+      subtitulo: 'Entradas de stock, salidas, préstamos de herramienta y localización 3D'
+    },
+    rh: {
+      titulo: 'Gestión de Personal y Rendimiento (RH)',
+      subtitulo: 'Expedientes de colaboradores de planta, estatus activo/baja y evaluación de KPIs'
     },
     chatbot: {
       titulo: 'Protemec Intelligence',
@@ -799,6 +822,18 @@ export default function App() {
             </div>
           ) : (
             <div key={moduloActivo} className="animate-view">
+              {/* 1. MÓDULO GERENCIA Y SEGUIMIENTO DE ALTO NIVEL */}
+              {moduloActivo === 'gerencia' && (
+                <GestionGerencia
+                  compras={compras}
+                  proyectos={proyectos}
+                  disenos={disenos}
+                  personalRH={personalRH}
+                  evaluacionesKPI={evaluacionesKPI}
+                />
+              )}
+
+              {/* 2. MÓDULO DE COMPRAS */}
               {moduloActivo === 'compras' && (
                 <VistaConsulta
                   compras={compras}
@@ -811,6 +846,7 @@ export default function App() {
                 />
               )}
 
+              {/* 3. MÓDULO DE PROYECTOS */}
               {moduloActivo === 'proyectos' && (
                 <GestionProyectos
                   proyectos={proyectos}
@@ -822,6 +858,7 @@ export default function App() {
                 />
               )}
 
+              {/* 4. MÓDULO DE CLIENTES (CRM) */}
               {moduloActivo === 'clientes' && (
                 <GestionClientes
                   clientes={clientes}
@@ -833,6 +870,7 @@ export default function App() {
                 />
               )}
 
+              {/* 5. MÓDULO DE INGENIERÍA 3D */}
               {moduloActivo === 'ingenieria' && (
                 <GestionIngenieria
                   disenos={disenos}
@@ -846,20 +884,37 @@ export default function App() {
                 />
               )}
 
+              {/* 6. MÓDULO DE ALMACÉN, SALIDAS Y PRÉSTAMOS CON RH */}
               {moduloActivo === 'almacen' && (
                 subVistaAlmacen === 'inventario' ? (
                   <GestionAlmacenInventario
                     compras={compras}
+                    proyectos={proyectos}
+                    personalRH={personalRH}
                     API_URL={API_URL}
                     recargarDatos={() => recargarDatos(true)}
                     mostrarToast={mostrarToast}
                     irAlVisor3D={() => setSubVistaAlmacen('visor3d')}
+                    puedeEditar={puedeEditarModuloActual}
                   />
                 ) : (
                   <GestionAlmacen3D API_URL={API_URL} />
                 )
               )}
 
+              {/* 7. MÓDULO DE RECURSOS HUMANOS Y KPIS */}
+              {moduloActivo === 'rh' && (
+                <GestionRH
+                  personalRH={personalRH}
+                  evaluacionesKPI={evaluacionesKPI}
+                  API_URL={API_URL}
+                  recargarDatos={() => recargarDatos(true)}
+                  mostrarToast={mostrarToast}
+                  puedeEditar={puedeEditarModuloActual}
+                />
+              )}
+
+              {/* 8. ASISTENTE IA */}
               {moduloActivo === 'chatbot' && <GestionChatbot compras={compras} proyectos={proyectos} />}
             </div>
           )}
