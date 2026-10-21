@@ -38,6 +38,40 @@ const CONTAINER_FOTOS_RH = process.env.AZURE_CONTAINER_FOTOS || 'foto-empleados'
 const CONTAINER_DOCS_RH = process.env.AZURE_CONTAINER_DOCS || 'documentos-usuarios'
 
 // -------------------------------------------------------------
+// AUTO-VERIFICACIÓN DE COLUMNAS NUEVAS PARA KPIS Y RH EN SQL
+// -------------------------------------------------------------
+async function asegurarColumnasRH() {
+  try {
+    let pool = await sql.connect(config)
+    await pool.request().query(`
+      IF OBJECT_ID('dbo.PersonalRH', 'U') IS NOT NULL
+      BEGIN
+        IF COL_LENGTH('dbo.PersonalRH', 'AplicaKPI') IS NULL
+          ALTER TABLE dbo.PersonalRH ADD AplicaKPI BIT NOT NULL DEFAULT 1;
+
+        IF COL_LENGTH('dbo.PersonalRH', 'FrecuenciaKPI') IS NULL
+          ALTER TABLE dbo.PersonalRH ADD FrecuenciaKPI VARCHAR(20) NOT NULL DEFAULT 'MENSUAL';
+      END
+
+      IF OBJECT_ID('dbo.EvaluacionesKPI', 'U') IS NOT NULL
+      BEGIN
+        IF COL_LENGTH('dbo.EvaluacionesKPI', 'Frecuencia') IS NULL
+          ALTER TABLE dbo.EvaluacionesKPI ADD Frecuencia VARCHAR(20) NOT NULL DEFAULT 'MENSUAL';
+
+        IF COL_LENGTH('dbo.EvaluacionesKPI', 'AreaEvaluada') IS NULL
+          ALTER TABLE dbo.EvaluacionesKPI ADD AreaEvaluada NVARCHAR(80) NULL;
+
+        ALTER TABLE dbo.EvaluacionesKPI ALTER COLUMN PeriodoMes VARCHAR(30) NOT NULL;
+      END
+    `)
+    console.log('✅ Esquema de RH y KPIs verificado en Azure SQL')
+  } catch (e) {
+    console.warn('⚠️ Aviso al verificar columnas de RH:', e.message)
+  }
+}
+asegurarColumnasRH()
+
+// -------------------------------------------------------------
 // SUBIDA A BLOB STORAGE CON VIGENCIA DE 99 AÑOS (IGUAL QUE COMPRAS)
 // -------------------------------------------------------------
 async function subirABlobYObtenerSAS(file, nombreContenedor = CONTAINER_COMPRAS) {
@@ -901,10 +935,11 @@ app.get('/api/rh/personal', async (req, res) => {
 })
 
 app.post('/api/rh/personal', upload.single('foto'), async (req, res) => {
-  const { nombreCompleto, telefono, departamento, puesto, fechaInicio, fechaNacimiento } = req.body
+  const { nombreCompleto, telefono, departamento, puesto, fechaInicio, fechaNacimiento, aplicaKPI, frecuenciaKPI } = req.body
   try {
     let urlSaaSFoto = req.file ? await subirABlobYObtenerSAS(req.file, CONTAINER_FOTOS_RH) : null
     let pool = await sql.connect(config)
+    const flagAplicaKPI = aplicaKPI === 'false' || aplicaKPI === false || aplicaKPI === 0 ? 0 : 1
 
     let r = await pool.request()
       .input('Nombre', sql.NVarChar, (nombreCompleto || '').trim())
@@ -913,10 +948,12 @@ app.post('/api/rh/personal', upload.single('foto'), async (req, res) => {
       .input('Puesto', sql.NVarChar, puesto || null)
       .input('FInicio', sql.Date, fechaInicio || new Date())
       .input('FNac', sql.Date, fechaNacimiento || null)
+      .input('AplicaKPI', sql.Bit, flagAplicaKPI)
+      .input('FrecKPI', sql.VarChar, frecuenciaKPI || 'MENSUAL')
       .input('URL', urlSaaSFoto)
       .query(`
-        INSERT INTO PersonalRH (NombreCompleto, Telefono, Departamento, Puesto, FechaInicio, FechaNacimiento, Activo, URL_SaaS, FotoURL)
-        VALUES (@Nombre, @Tel, @Dep, @Puesto, @FInicio, @FNac, 1, @URL, @URL);
+        INSERT INTO PersonalRH (NombreCompleto, Telefono, Departamento, Puesto, FechaInicio, FechaNacimiento, Activo, AplicaKPI, FrecuenciaKPI, URL_SaaS, FotoURL)
+        VALUES (@Nombre, @Tel, @Dep, @Puesto, @FInicio, @FNac, 1, @AplicaKPI, @FrecKPI, @URL, @URL);
         SELECT CAST(SCOPE_IDENTITY() AS INT) AS NuevoEmpleadoID;
       `)
 
@@ -943,11 +980,12 @@ app.post('/api/rh/personal', upload.single('foto'), async (req, res) => {
 
 app.put('/api/rh/personal/:id', upload.single('foto'), async (req, res) => {
   const { id } = req.params
-  const { nombreCompleto, telefono, departamento, puesto, fechaInicio, fechaNacimiento, activo, fechaSalida, motivoSalida, fotoUrlActual } = req.body
+  const { nombreCompleto, telefono, departamento, puesto, fechaInicio, fechaNacimiento, activo, aplicaKPI, frecuenciaKPI, fechaSalida, motivoSalida, fotoUrlActual } = req.body
   try {
     let nuevaUrlSaaS = req.file ? await subirABlobYObtenerSAS(req.file, CONTAINER_FOTOS_RH) : (fotoUrlActual || null)
     let pool = await sql.connect(config)
     const estaActivo = activo === true || activo === 1 || activo === 'true'
+    const flagAplicaKPI = aplicaKPI === 'false' || aplicaKPI === false || aplicaKPI === 0 ? 0 : 1
     const empIdNum = parseInt(id, 10)
 
     await pool.request()
@@ -959,6 +997,8 @@ app.put('/api/rh/personal/:id', upload.single('foto'), async (req, res) => {
       .input('FInicio', sql.Date, fechaInicio || null)
       .input('FNac', sql.Date, fechaNacimiento || null)
       .input('Activo', sql.Bit, estaActivo ? 1 : 0)
+      .input('AplicaKPI', sql.Bit, flagAplicaKPI)
+      .input('FrecKPI', sql.VarChar, frecuenciaKPI || 'MENSUAL')
       .input('FSalida', sql.Date, !estaActivo ? (fechaSalida || new Date()) : null)
       .input('Motivo', sql.NVarChar, !estaActivo ? (motivoSalida || null) : null)
       .input('URL', nuevaUrlSaaS)
@@ -971,6 +1011,8 @@ app.put('/api/rh/personal/:id', upload.single('foto'), async (req, res) => {
             FechaInicio = @FInicio,
             FechaNacimiento = @FNac,
             Activo = @Activo,
+            AplicaKPI = @AplicaKPI,
+            FrecuenciaKPI = @FrecKPI,
             FechaSalida = @FSalida,
             MotivoSalida = @Motivo,
             URL_SaaS = COALESCE(@URL, URL_SaaS),
@@ -1110,7 +1152,6 @@ app.post('/api/rh/personal/:id/documentos', upload.single('archivo'), async (req
   }
 })
 
-
 // Actualizar manualmente la fecha de término / referencia de un permiso o documento
 app.put('/api/rh/documentos/:docId/vigencia', async (req, res) => {
   const { docId } = req.params
@@ -1159,10 +1200,14 @@ app.get('/api/rh/kpis', async (req, res) => {
   } catch (e) { res.status(500).send(e.message) }
 })
 
+// Alta o actualización de evaluación KPI (soporta Semanal, Mensual, Bimestral y por Área)
 app.post('/api/rh/kpis', async (req, res) => {
   const {
+    evaluacionID,
     empleadoID,
     periodoMes,
+    frecuencia,
+    areaEvaluada,
     kpiPuntualidad,
     kpiCalidad,
     kpiProductividad,
@@ -1175,14 +1220,26 @@ app.post('/api/rh/kpis', async (req, res) => {
 
   try {
     let pool = await sql.connect(config)
-    let existe = await pool.request()
-      .input('EID', sql.Int, parseInt(empleadoID, 10))
-      .input('Mes', sql.VarChar, periodoMes)
-      .query('SELECT EvaluacionID FROM EvaluacionesKPI WHERE EmpleadoID = @EID AND PeriodoMes = @Mes')
+    let evalIdObjetivo = evaluacionID ? parseInt(evaluacionID, 10) : null
 
-    if (existe.recordset.length > 0) {
+    if (!evalIdObjetivo) {
+      let existe = await pool.request()
+        .input('EID', sql.Int, parseInt(empleadoID, 10))
+        .input('Mes', sql.VarChar, periodoMes)
+        .query('SELECT EvaluacionID FROM EvaluacionesKPI WHERE EmpleadoID = @EID AND PeriodoMes = @Mes')
+
+      if (existe.recordset.length > 0) {
+        evalIdObjetivo = existe.recordset[0].EvaluacionID
+      }
+    }
+
+    if (evalIdObjetivo) {
       await pool.request()
-        .input('EvalID', sql.Int, existe.recordset[0].EvaluacionID)
+        .input('EvalID', sql.Int, evalIdObjetivo)
+        .input('EID', sql.Int, parseInt(empleadoID, 10))
+        .input('Mes', sql.VarChar, periodoMes)
+        .input('Frec', sql.VarChar, frecuencia || 'MENSUAL')
+        .input('Area', sql.NVarChar, areaEvaluada || null)
         .input('P1', sql.Decimal(5, 2), parseFloat(kpiPuntualidad) || 0)
         .input('P2', sql.Decimal(5, 2), parseFloat(kpiCalidad) || 0)
         .input('P3', sql.Decimal(5, 2), parseFloat(kpiProductividad) || 0)
@@ -1193,7 +1250,11 @@ app.post('/api/rh/kpis', async (req, res) => {
         .input('Com', sql.NVarChar, comentarios || null)
         .query(`
           UPDATE EvaluacionesKPI
-          SET KpiPuntualidad = @P1,
+          SET EmpleadoID = @EID,
+              PeriodoMes = @Mes,
+              Frecuencia = @Frec,
+              AreaEvaluada = COALESCE(@Area, AreaEvaluada),
+              KpiPuntualidad = @P1,
               KpiCalidad = @P2,
               KpiProductividad = @P3,
               KpiSeguridad5S = @P4,
@@ -1204,11 +1265,13 @@ app.post('/api/rh/kpis', async (req, res) => {
               FechaEvaluacion = GETDATE()
           WHERE EvaluacionID = @EvalID
         `)
-      return res.json({ mensaje: 'Evaluación mensual actualizada' })
+      return res.json({ mensaje: 'Evaluación KPI actualizada correctamente' })
     } else {
       await pool.request()
         .input('EID', sql.Int, parseInt(empleadoID, 10))
         .input('Mes', sql.VarChar, periodoMes)
+        .input('Frec', sql.VarChar, frecuencia || 'MENSUAL')
+        .input('Area', sql.NVarChar, areaEvaluada || null)
         .input('P1', sql.Decimal(5, 2), parseFloat(kpiPuntualidad) || 0)
         .input('P2', sql.Decimal(5, 2), parseFloat(kpiCalidad) || 0)
         .input('P3', sql.Decimal(5, 2), parseFloat(kpiProductividad) || 0)
@@ -1219,13 +1282,70 @@ app.post('/api/rh/kpis', async (req, res) => {
         .input('Com', sql.NVarChar, comentarios || null)
         .query(`
           INSERT INTO EvaluacionesKPI
-            (EmpleadoID, PeriodoMes, KpiPuntualidad, KpiCalidad, KpiProductividad, KpiSeguridad5S, KpiColaboracion, MetasCumplidas, MetasAsignadas, Comentarios)
+            (EmpleadoID, PeriodoMes, Frecuencia, AreaEvaluada, KpiPuntualidad, KpiCalidad, KpiProductividad, KpiSeguridad5S, KpiColaboracion, MetasCumplidas, MetasAsignadas, Comentarios)
           VALUES
-            (@EID, @Mes, @P1, @P2, @P3, @P4, @P5, @MC, @MA, @Com)
+            (@EID, @Mes, @Frec, @Area, @P1, @P2, @P3, @P4, @P5, @MC, @MA, @Com)
         `)
       return res.json({ mensaje: 'Evaluación KPI registrada correctamente' })
     }
   } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// Endpoint directo PUT para corregir una evaluación existente por su EvaluacionID
+app.put('/api/rh/kpis/:id', async (req, res) => {
+  const { id } = req.params
+  const {
+    empleadoID,
+    periodoMes,
+    frecuencia,
+    areaEvaluada,
+    kpiPuntualidad,
+    kpiCalidad,
+    kpiProductividad,
+    kpiSeguridad5S,
+    kpiColaboracion,
+    metasCumplidas,
+    metasAsignadas,
+    comentarios
+  } = req.body
+
+  try {
+    let pool = await sql.connect(config)
+    await pool.request()
+      .input('EvalID', sql.Int, parseInt(id, 10))
+      .input('EID', sql.Int, parseInt(empleadoID, 10))
+      .input('Mes', sql.VarChar, periodoMes)
+      .input('Frec', sql.VarChar, frecuencia || 'MENSUAL')
+      .input('Area', sql.NVarChar, areaEvaluada || null)
+      .input('P1', sql.Decimal(5, 2), parseFloat(kpiPuntualidad) || 0)
+      .input('P2', sql.Decimal(5, 2), parseFloat(kpiCalidad) || 0)
+      .input('P3', sql.Decimal(5, 2), parseFloat(kpiProductividad) || 0)
+      .input('P4', sql.Decimal(5, 2), parseFloat(kpiSeguridad5S) || 0)
+      .input('P5', sql.Decimal(5, 2), parseFloat(kpiColaboracion) || 0)
+      .input('MC', sql.Int, parseInt(metasCumplidas, 10) || 0)
+      .input('MA', sql.Int, parseInt(metasAsignadas, 10) || 1)
+      .input('Com', sql.NVarChar, comentarios || null)
+      .query(`
+        UPDATE EvaluacionesKPI
+        SET EmpleadoID = @EID,
+            PeriodoMes = @Mes,
+            Frecuencia = @Frec,
+            AreaEvaluada = COALESCE(@Area, AreaEvaluada),
+            KpiPuntualidad = @P1,
+            KpiCalidad = @P2,
+            KpiProductividad = @P3,
+            KpiSeguridad5S = @P4,
+            KpiColaboracion = @P5,
+            MetasCumplidas = @MC,
+            MetasAsignadas = @MA,
+            Comentarios = @Com,
+            FechaEvaluacion = GETDATE()
+        WHERE EvaluacionID = @EvalID
+      `)
+    res.json({ mensaje: 'Evaluación KPI corregida correctamente' })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
 })
 
 const PORT = process.env.PORT || 3000

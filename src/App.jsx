@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import VistaConsulta from './components/VistaConsulta'
 import FormularioCompra from './components/FormularioCompra'
@@ -12,8 +12,8 @@ import GestionGerencia from './components/GestionGerencia'
 import GestionChatbot from './components/GestionChatbot'
 import ModalConfiguracion from './components/ModalConfiguracion'
 
-//const API_URL = import.meta.env.VITE_API_URL
-const API_URL = import.meta.env.VITE_API_URL || 'https://pruebajs-ezbja7gjf9cmg4fn.centralus-01.azurewebsites.net'
+const API_URL = import.meta.env.VITE_API_URL
+//const API_URL = import.meta.env.VITE_API_URL || 'https://pruebajs-ezbja7gjf9cmg4fn.centralus-01.azurewebsites.net'
 
 const PERFIL_MAESTRO_TOTAL = {
   id: 1,
@@ -33,6 +33,91 @@ const PERFIL_MAESTRO_TOTAL = {
     chatbot: { ver: true, editar: true },
     seguridad: { ver: true, editar: true }
   }
+}
+
+// Determina si el texto de un botón corresponde a una acción de Consulta/Lectura permitida
+function esBotonDeSoloConsulta(texto = '', clase = '') {
+  if (clase.includes('pro-segmented-btn') && !texto.includes('registrar') && !texto.includes('nuevo')) {
+    return true
+  }
+  const t = texto.trim().toLowerCase()
+  if (!t || t === '▶' || t === '▼' || t === '«' || t === '»' || t === '✕' || t === '×') return true
+
+  const palabrasPermitidas = [
+    'ver ',
+    'ver pdf',
+    'ver archivo',
+    'archivos',
+    'kpis',
+    'perfil kpi',
+    'abrir',
+    'descargar',
+    'cerrar',
+    'listo',
+    'sincronizar',
+    'todos',
+    'comprados',
+    'cotizados',
+    'filtros',
+    'limpiar',
+    'activos',
+    'bajas',
+    'explorador 3d',
+    'control de avance',
+    'recepción y stock',
+    'gemelo digital 3d',
+    'gemelo 3d',
+    'existencias',
+    'préstamos',
+    'recepción',
+    'historial',
+    'plantilla',
+    'panel principal',
+    'envío en grupo',
+    'kardex',
+    'ubicar en 3d',
+    'ver en 3d',
+    'cerrar vista flotante'
+  ]
+  return palabrasPermitidas.some((p) => t.includes(p))
+}
+
+// Determina si el texto de un botón corresponde a una acción de Creación/Edición/Baja
+function esBotonDeEscritura(texto = '', titulo = '', tipo = '') {
+  if (tipo === 'submit') return true
+  const combinado = `${texto} ${titulo}`.trim().toLowerCase()
+  if (combinado === '+' || combinado === '-' || combinado === '＋' || combinado === '🗑️' || combinado === '✏️') {
+    return true
+  }
+
+  const palabrasEscritura = [
+    'editar',
+    'guardar',
+    'registrar',
+    'nuevo',
+    'nueva',
+    'crear',
+    'añadir',
+    'agregar',
+    'dar de alta',
+    'eliminar',
+    'borrar',
+    'cancelar registro',
+    'subir',
+    'cambiar foto',
+    'sumar stock',
+    'prestar',
+    'dar salida',
+    'dar entrada',
+    'recibir devolución',
+    'recibir pieza',
+    'recibir todo el kit',
+    'autorizar',
+    'confirmar',
+    'modificar',
+    'actualizar'
+  ]
+  return palabrasEscritura.some((p) => combinado.includes(p))
 }
 
 export default function App() {
@@ -65,15 +150,7 @@ export default function App() {
   const [errorLogin, setErrorLogin] = useState('')
   const [validandoLogin, setValidandoLogin] = useState(false)
 
-  useEffect(() => {
-    if (usuarioActual) {
-      localStorage.setItem('protemec_sesion_activa', JSON.stringify(usuarioActual))
-    } else {
-      localStorage.removeItem('protemec_sesion_activa')
-    }
-  }, [usuarioActual])
-
-  // Sincronizar permisos en vivo si el usuario actual es uno de los perfiles en Azure SQL
+  // Sincronizar permisos en vivo desde Azure SQL para la sesión actual
   const usuarioConPermisosActualizados = useMemo(() => {
     if (!usuarioActual) return null
     if (usuarioActual.esMaestro) {
@@ -85,18 +162,34 @@ export default function App() {
         email: credencialesMaestras.email || PERFIL_MAESTRO_TOTAL.email
       }
     }
-    return perfilesUsuarios.find((p) => String(p.id) === String(usuarioActual.id)) || usuarioActual
+    const perfilBD = perfilesUsuarios.find(
+      (p) =>
+        String(p.id) === String(usuarioActual.id) ||
+        (p.usuario &&
+          usuarioActual.usuario &&
+          String(p.usuario).toLowerCase() === String(usuarioActual.usuario).toLowerCase())
+    )
+    return perfilBD || usuarioActual
   }, [usuarioActual, perfilesUsuarios, credencialesMaestras])
+
+  // Mantener localStorage siempre sincronizado con los permisos más recientes de Azure SQL
+  useEffect(() => {
+    if (usuarioConPermisosActualizados) {
+      localStorage.setItem('protemec_sesion_activa', JSON.stringify(usuarioConPermisosActualizados))
+    } else {
+      localStorage.removeItem('protemec_sesion_activa')
+    }
+  }, [usuarioConPermisosActualizados])
 
   // Verificar si el usuario actual puede ver o editar el panel de Seguridad
   const puedeVerSeguridad = Boolean(
     usuarioConPermisosActualizados?.esMaestro ||
-    usuarioConPermisosActualizados?.permisos?.seguridad?.ver
+    usuarioConPermisosActualizados?.permisos?.seguridad?.ver === true
   )
 
   const puedeDarPermisos = Boolean(
     usuarioConPermisosActualizados?.esMaestro ||
-    usuarioConPermisosActualizados?.permisos?.seguridad?.editar
+    usuarioConPermisosActualizados?.permisos?.seguridad?.editar === true
   )
 
   // Navegación Principal
@@ -131,6 +224,154 @@ export default function App() {
       setNotificacion((actual) => (actual?.mensaje === mensaje ? null : actual))
     }, 3600)
   }, [])
+
+  // Permisos estrictos del módulo activo (Por defecto FALSO si no lo tiene asignado)
+  const permisosModuloActual = usuarioConPermisosActualizados?.permisos?.[moduloActivo] || {
+    ver: false,
+    editar: false
+  }
+  const puedeEditarModuloActual = Boolean(
+    usuarioConPermisosActualizados?.esMaestro || permisosModuloActual.editar === true
+  )
+
+  // Si en Ingeniería está en la pestaña 'nuevo' pero no tiene permiso de editar, regresarlo a 'explorador'
+  useEffect(() => {
+    if (moduloActivo === 'ingenieria' && !puedeEditarModuloActual && subVistaIngenieria === 'nuevo') {
+      setSubVistaIngenieria('explorador')
+    }
+  }, [moduloActivo, puedeEditarModuloActual, subVistaIngenieria])
+
+  // Si al usuario le quitan el permiso de 'ver' el módulo donde está parado, redirigir al primer módulo autorizado
+  useEffect(() => {
+    if (!usuarioConPermisosActualizados || usuarioConPermisosActualizados.esMaestro) return
+    const puedeVerActual = usuarioConPermisosActualizados.permisos?.[moduloActivo]?.ver === true
+    if (!puedeVerActual) {
+      const primeroAutorizado = [
+        'gerencia',
+        'compras',
+        'proyectos',
+        'clientes',
+        'ingenieria',
+        'almacen',
+        'rh',
+        'chatbot'
+      ].find((k) => usuarioConPermisosActualizados.permisos?.[k]?.ver === true)
+      if (primeroAutorizado) setModuloActivo(primeroAutorizado)
+    }
+  }, [usuarioConPermisosActualizados, moduloActivo])
+
+  // CANDADO 1: Interceptor Global de Fetch para impedir POST/PUT/DELETE si no tiene permiso de edición
+  const permisosRef = useRef(usuarioConPermisosActualizados)
+  const moduloRef = useRef(moduloActivo)
+  useEffect(() => {
+    permisosRef.current = usuarioConPermisosActualizados
+    moduloRef.current = moduloActivo
+  }, [usuarioConPermisosActualizados, moduloActivo])
+
+  useEffect(() => {
+    const fetchOriginal = window.fetch.bind(window)
+
+    window.fetch = async (input, init = {}) => {
+      const metodo = (init?.method || 'GET').toUpperCase()
+      const urlStr = typeof input === 'string' ? input : input?.url || ''
+
+      if (['POST', 'PUT', 'DELETE'].includes(metodo) && !urlStr.includes('/api/login')) {
+        const user = permisosRef.current
+        if (user && !user.esMaestro) {
+          let moduloRequerido = moduloRef.current
+          if (urlStr.includes('/api/compras') || urlStr.includes('/api/datos')) moduloRequerido = 'compras'
+          else if (urlStr.includes('/api/proyectos')) moduloRequerido = 'proyectos'
+          else if (
+            urlStr.includes('/api/clientes') ||
+            urlStr.includes('/api/ubicaciones') ||
+            urlStr.includes('/api/contactos')
+          )
+            moduloRequerido = 'clientes'
+          else if (urlStr.includes('/api/ingenieria')) moduloRequerido = 'ingenieria'
+          else if (urlStr.includes('/api/inventario')) moduloRequerido = 'almacen'
+          else if (urlStr.includes('/api/rh')) moduloRequerido = 'rh'
+          else if (urlStr.includes('/api/usuarios')) moduloRequerido = 'seguridad'
+
+          const tienePermisoEdicion = Boolean(user.permisos?.[moduloRequerido]?.editar === true)
+          if (!tienePermisoEdicion) {
+            mostrarToast('🔒 Modo Solo Lectura: No tienes permisos para guardar ni modificar datos', 'alerta')
+            return new Response(
+              JSON.stringify({ error: 'Modo Solo Lectura: Permiso de edición denegado' }),
+              { status: 403, headers: { 'Content-Type': 'application/json' } }
+            )
+          }
+        }
+      }
+
+      return fetchOriginal(input, init)
+    }
+
+    return () => {
+      window.fetch = fetchOriginal
+    }
+  }, [mostrarToast])
+
+  // CANDADO 2: Bloqueo Visual Automático de Formularios de Alta y Botones de Edición en el DOM
+  const mainContentRef = useRef(null)
+
+  useEffect(() => {
+    const contenedor = mainContentRef.current
+    if (!contenedor) return
+
+    const aplicarCandadoDOM = () => {
+      if (puedeEditarModuloActual) {
+        contenedor.querySelectorAll('[data-bloqueado-lectura="true"]').forEach((el) => {
+          el.style.display = ''
+          el.disabled = false
+          el.removeAttribute('data-bloqueado-lectura')
+        })
+        return
+      }
+
+      // 1. Ocultar formularios de alta/edición excepto el chatbot
+      if (moduloActivo !== 'chatbot') {
+        contenedor.querySelectorAll('form').forEach((formEl) => {
+          if (formEl.getAttribute('data-bloqueado-lectura') !== 'true') {
+            formEl.style.display = 'none'
+            formEl.setAttribute('data-bloqueado-lectura', 'true')
+          }
+        })
+      }
+
+      // 2. Ocultar botones de escritura/creación
+      contenedor.querySelectorAll('button, label.pro-btn').forEach((btn) => {
+        const texto = btn.textContent || ''
+        const titulo = btn.getAttribute('title') || ''
+        const tipo = (btn.getAttribute('type') || '').toLowerCase()
+        const clase = btn.className || ''
+
+        if (esBotonDeSoloConsulta(texto, clase)) return
+
+        if (esBotonDeEscritura(texto, titulo, tipo)) {
+          btn.style.display = 'none'
+          btn.disabled = true
+          btn.setAttribute('data-bloqueado-lectura', 'true')
+        }
+      })
+
+      // 3. Deshabilitar inputs de edición en tablas
+      contenedor
+        .querySelectorAll('input[type="file"], input[type="range"], input[type="checkbox"], input[type="date"]')
+        .forEach((inp) => {
+          inp.disabled = true
+          inp.setAttribute('data-bloqueado-lectura', 'true')
+        })
+    }
+
+    aplicarCandadoDOM()
+
+    const observer = new MutationObserver(() => {
+      aplicarCandadoDOM()
+    })
+
+    observer.observe(contenedor, { childList: true, subtree: true })
+    return () => observer.disconnect()
+  }, [puedeEditarModuloActual, moduloActivo, compras, proyectos, clientes, ubicaciones, contactos, disenos, personalRH])
 
   // Estados del Formulario de Compras
   const [idEditando, setIdEditando] = useState(null)
@@ -263,9 +504,16 @@ export default function App() {
 
       setUsuarioActual(data)
       setEmailEntraInput('')
-      const primerModuloPermitido = ['gerencia', 'compras', 'proyectos', 'clientes', 'ingenieria', 'almacen', 'rh', 'chatbot'].find(
-        (k) => data.esMaestro || data.permisos?.[k]?.ver
-      )
+      const primerModuloPermitido = [
+        'gerencia',
+        'compras',
+        'proyectos',
+        'clientes',
+        'ingenieria',
+        'almacen',
+        'rh',
+        'chatbot'
+      ].find((k) => data.esMaestro || data.permisos?.[k]?.ver === true)
       if (primerModuloPermitido) setModuloActivo(primerModuloPermitido)
       mostrarToast(`Bienvenido, ${data.nombre}`)
     } catch {
@@ -301,9 +549,16 @@ export default function App() {
       setUserMaestroInput('')
       setPassMaestroInput('')
 
-      const primerModulo = ['gerencia', 'compras', 'proyectos', 'clientes', 'ingenieria', 'almacen', 'rh', 'chatbot'].find(
-        (k) => data.esMaestro || data.permisos?.[k]?.ver
-      )
+      const primerModulo = [
+        'gerencia',
+        'compras',
+        'proyectos',
+        'clientes',
+        'ingenieria',
+        'almacen',
+        'rh',
+        'chatbot'
+      ].find((k) => data.esMaestro || data.permisos?.[k]?.ver === true)
       if (primerModulo) setModuloActivo(primerModulo)
 
       mostrarToast(
@@ -346,12 +601,20 @@ export default function App() {
   }
 
   const abrirModalNuevaCompra = () => {
+    if (!puedeEditarModuloActual) {
+      mostrarToast('🔒 Modo Solo Lectura: No tienes permisos para registrar compras', 'alerta')
+      return
+    }
     cancelarEdicion()
     setFechaCompra(new Date().toISOString().split('T')[0])
     setModalCompraAbierto(true)
   }
 
   const iniciarEdicion = (fila) => {
+    if (!puedeEditarModuloActual) {
+      mostrarToast('🔒 Modo Solo Lectura: No tienes permisos para editar registros', 'alerta')
+      return
+    }
     const id = fila.Numero ?? fila.ID ?? fila.Id ?? fila.id
     setIdEditando(id)
     setProveedor(fila.Proveedor || fila.proveedor || '')
@@ -375,6 +638,10 @@ export default function App() {
 
   const manejarEnvio = async (e) => {
     e.preventDefault()
+    if (!puedeEditarModuloActual) {
+      mostrarToast('🔒 Modo Solo Lectura: No tienes permisos para guardar cambios', 'alerta')
+      return
+    }
     setGuardando(true)
 
     const esEdicion = idEditando !== null
@@ -438,7 +705,7 @@ export default function App() {
   }
 
   const manejarCancelarRegistro = () => {
-    if (!idEditando) return
+    if (!idEditando || !puedeEditarModuloActual) return
     setConfirmacionModal({
       titulo: `¿Cancelar el Registro #${idEditando}?`,
       descripcion: `El registro de "${producto || 'este artículo'}" pasará a estatus Cancelado.`,
@@ -581,10 +848,6 @@ export default function App() {
     )
   }
 
-  const permisosModuloActual = usuarioConPermisosActualizados.permisos?.[moduloActivo] || { ver: true, editar: true }
-  const puedeEditarModuloActual = Boolean(usuarioConPermisosActualizados.esMaestro || permisosModuloActual.editar)
-
-  // Menú con los módulos autorizados (incluyendo Dirección y Recursos Humanos)
   const menuNavegacion = [
     { id: 'gerencia', label: 'Dirección y KPIs', icono: '📊', badge: null },
     { id: 'compras', label: 'Compras y Finanzas', icono: '💳', badge: compras.length },
@@ -594,7 +857,11 @@ export default function App() {
     { id: 'almacen', label: 'Almacén Digital 3D', icono: '📦', badge: null },
     { id: 'rh', label: 'Recursos Humanos', icono: '👥', badge: personalRH.filter((p) => p.Activo).length },
     { id: 'chatbot', label: 'Asistente IA', icono: '✨', badge: 'AI' }
-  ].filter((item) => usuarioConPermisosActualizados.esMaestro || usuarioConPermisosActualizados.permisos?.[item.id]?.ver)
+  ].filter(
+    (item) =>
+      usuarioConPermisosActualizados.esMaestro ||
+      usuarioConPermisosActualizados.permisos?.[item.id]?.ver === true
+  )
 
   const infoEncabezado = {
     gerencia: {
@@ -619,7 +886,7 @@ export default function App() {
     },
     almacen: {
       titulo: 'Gemelo Digital de Almacén e Inventario',
-      subtitulo: 'Entradas de stock, salidas, préstamos de herramienta y localización 3D'
+      subtitulo: 'Entradas de stock, salidas en grupo, préstamos a sitio y localización 3D'
     },
     rh: {
       titulo: 'Gestión de Personal y Rendimiento (RH)',
@@ -630,6 +897,39 @@ export default function App() {
       subtitulo: 'Copiloto empresarial conectado a tus operaciones'
     }
   }[moduloActivo] || { titulo: 'Protemec ERP', subtitulo: '' }
+
+  // CANDADO 3: Bloqueo en fase de captura para eventos de formulario, clic en botones de edición y Drag & Drop
+  const bloquearEnvioEnSoloLectura = (e) => {
+    if (!puedeEditarModuloActual && moduloActivo !== 'chatbot') {
+      e.preventDefault()
+      e.stopPropagation()
+      mostrarToast('🔒 Modo Solo Lectura: No tienes permisos para dar de alta ni modificar datos', 'alerta')
+    }
+  }
+
+  const bloquearClicEdicionEnSoloLectura = (e) => {
+    if (puedeEditarModuloActual) return
+    const btn = e.target.closest('button')
+    if (!btn) return
+    const texto = btn.textContent || ''
+    const titulo = btn.getAttribute('title') || ''
+    const tipo = (btn.getAttribute('type') || '').toLowerCase()
+    const clase = btn.className || ''
+
+    if (!esBotonDeSoloConsulta(texto, clase) && esBotonDeEscritura(texto, titulo, tipo)) {
+      e.preventDefault()
+      e.stopPropagation()
+      mostrarToast('🔒 Modo Solo Lectura: Acción deshabilitada para tu perfil', 'alerta')
+    }
+  }
+
+  const bloquearDropEnSoloLectura = (e) => {
+    if (!puedeEditarModuloActual) {
+      e.preventDefault()
+      e.stopPropagation()
+      mostrarToast('🔒 Modo Solo Lectura: No puedes mover ni modificar avances', 'alerta')
+    }
+  }
 
   return (
     <div style={estilos.appLayout}>
@@ -741,8 +1041,16 @@ export default function App() {
                 {infoEncabezado.titulo}
               </h1>
               {!puedeEditarModuloActual && (
-                <span className="pro-badge" style={{ backgroundColor: '#fffbeb', color: '#92400e', border: '1px solid #fde68a' }}>
-                  🔒 Modo Solo Lectura
+                <span
+                  className="pro-badge"
+                  style={{
+                    backgroundColor: '#fffbeb',
+                    color: '#92400e',
+                    border: '1px solid #fde68a',
+                    fontWeight: 700
+                  }}
+                >
+                  🔒 Modo Solo Lectura (Sin permiso de edición)
                 </span>
               )}
             </div>
@@ -812,7 +1120,13 @@ export default function App() {
           </div>
         </header>
 
-        <main style={estilos.mainContent}>
+        <main
+          ref={mainContentRef}
+          style={estilos.mainContent}
+          onSubmitCapture={bloquearEnvioEnSoloLectura}
+          onClickCapture={bloquearClicEdicionEnSoloLectura}
+          onDropCapture={bloquearDropEnSoloLectura}
+        >
           {cargando ? (
             <div style={estilos.loaderContainer}>
               <div style={estilos.appleSpinner} />
@@ -821,7 +1135,7 @@ export default function App() {
               </h3>
             </div>
           ) : (
-            <div key={moduloActivo} className="animate-view">
+            <div key={`${moduloActivo}_${puedeEditarModuloActual}`} className="animate-view">
               {/* 1. MÓDULO GERENCIA Y SEGUIMIENTO DE ALTO NIVEL */}
               {moduloActivo === 'gerencia' && (
                 <GestionGerencia
@@ -830,6 +1144,7 @@ export default function App() {
                   disenos={disenos}
                   personalRH={personalRH}
                   evaluacionesKPI={evaluacionesKPI}
+                  puedeEditar={puedeEditarModuloActual}
                 />
               )}
 
@@ -837,7 +1152,7 @@ export default function App() {
               {moduloActivo === 'compras' && (
                 <VistaConsulta
                   compras={compras}
-                  iniciarEdicion={iniciarEdicion}
+                  iniciarEdicion={puedeEditarModuloActual ? iniciarEdicion : () => mostrarToast('🔒 Modo Solo Lectura', 'alerta')}
                   abrirModalNuevaCompra={abrirModalNuevaCompra}
                   proveedoresUnicos={proveedoresUnicos}
                   categoriasUnicas={categoriasUnicas}
@@ -855,6 +1170,7 @@ export default function App() {
                   API_URL={API_URL}
                   recargarDatos={() => recargarDatos(true)}
                   mostrarToast={mostrarToast}
+                  puedeEditar={puedeEditarModuloActual}
                 />
               )}
 
@@ -867,6 +1183,7 @@ export default function App() {
                   API_URL={API_URL}
                   recargarDatos={() => recargarDatos(true)}
                   mostrarToast={mostrarToast}
+                  puedeEditar={puedeEditarModuloActual}
                 />
               )}
 
@@ -891,6 +1208,7 @@ export default function App() {
                     compras={compras}
                     proyectos={proyectos}
                     personalRH={personalRH}
+                    usuarioActual={usuarioConPermisosActualizados}
                     API_URL={API_URL}
                     recargarDatos={() => recargarDatos(true)}
                     mostrarToast={mostrarToast}
@@ -898,7 +1216,7 @@ export default function App() {
                     puedeEditar={puedeEditarModuloActual}
                   />
                 ) : (
-                  <GestionAlmacen3D API_URL={API_URL} />
+                  <GestionAlmacen3D API_URL={API_URL} puedeEditar={puedeEditarModuloActual} />
                 )
               )}
 
@@ -921,8 +1239,9 @@ export default function App() {
         </main>
       </div>
 
-      {/* PORTAL PARA FORMULARIO DE COMPRA */}
+      {/* PORTAL PARA FORMULARIO DE COMPRA (SOLO SI TIENE PERMISO DE EDITAR) */}
       {modalCompraAbierto &&
+        puedeEditarModuloActual &&
         createPortal(
           <div className="pro-modal-backdrop" onClick={cancelarEdicion}>
             <div
@@ -989,6 +1308,7 @@ export default function App() {
 
       {/* PORTAL PARA CONFIRMACIÓN DE CANCELACIÓN */}
       {confirmacionModal &&
+        puedeEditarModuloActual &&
         createPortal(
           <div className="pro-modal-backdrop" onClick={() => setConfirmacionModal(null)}>
             <div className="pro-modal-window" style={{ maxWidth: '420px' }} onClick={(e) => e.stopPropagation()}>
