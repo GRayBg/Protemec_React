@@ -55,6 +55,7 @@ function esBotonDeSoloConsulta(texto = '', clase = '') {
     'cerrar',
     'listo',
     'sincronizar',
+    'sincronizando',
     'todos',
     'comprados',
     'cotizados',
@@ -198,7 +199,7 @@ export default function App() {
   const [subVistaIngenieria, setSubVistaIngenieria] = useState('explorador')
   const [subVistaAlmacen, setSubVistaAlmacen] = useState('inventario')
 
-  // Estados de Datos Globales (Azure SQL)
+  // Estados de Datos Globales (Azure SQL) + Trigger de Sincronización Global
   const [compras, setCompras] = useState([])
   const [clientes, setClientes] = useState([])
   const [ubicaciones, setUbicaciones] = useState([])
@@ -209,6 +210,7 @@ export default function App() {
   const [evaluacionesKPI, setEvaluacionesKPI] = useState([])
   const [cargando, setCargando] = useState(true)
   const [sincronizando, setSincronizando] = useState(false)
+  const [syncTrigger, setSyncTrigger] = useState(0)
 
   // Ventanas Emergentes (Modales)
   const [modalCompraAbierto, setModalCompraAbierto] = useState(false)
@@ -225,7 +227,7 @@ export default function App() {
     }, 3600)
   }, [])
 
-  // Permisos estrictos del módulo activo (Por defecto FALSO si no lo tiene asignado)
+  // Permisos estrictos del módulo activo
   const permisosModuloActual = usuarioConPermisosActualizados?.permisos?.[moduloActivo] || {
     ver: false,
     editar: false
@@ -234,14 +236,12 @@ export default function App() {
     usuarioConPermisosActualizados?.esMaestro || permisosModuloActual.editar === true
   )
 
-  // Si en Ingeniería está en la pestaña 'nuevo' pero no tiene permiso de editar, regresarlo a 'explorador'
   useEffect(() => {
     if (moduloActivo === 'ingenieria' && !puedeEditarModuloActual && subVistaIngenieria === 'nuevo') {
       setSubVistaIngenieria('explorador')
     }
   }, [moduloActivo, puedeEditarModuloActual, subVistaIngenieria])
 
-  // Si al usuario le quitan el permiso de 'ver' el módulo donde está parado, redirigir al primer módulo autorizado
   useEffect(() => {
     if (!usuarioConPermisosActualizados || usuarioConPermisosActualizados.esMaestro) return
     const puedeVerActual = usuarioConPermisosActualizados.permisos?.[moduloActivo]?.ver === true
@@ -328,7 +328,6 @@ export default function App() {
         return
       }
 
-      // 1. Ocultar formularios de alta/edición excepto el chatbot
       if (moduloActivo !== 'chatbot') {
         contenedor.querySelectorAll('form').forEach((formEl) => {
           if (formEl.getAttribute('data-bloqueado-lectura') !== 'true') {
@@ -338,7 +337,6 @@ export default function App() {
         })
       }
 
-      // 2. Ocultar botones de escritura/creación
       contenedor.querySelectorAll('button, label.pro-btn').forEach((btn) => {
         const texto = btn.textContent || ''
         const titulo = btn.getAttribute('title') || ''
@@ -354,7 +352,6 @@ export default function App() {
         }
       })
 
-      // 3. Deshabilitar inputs de edición en tablas
       contenedor
         .querySelectorAll('input[type="file"], input[type="range"], input[type="checkbox"], input[type="date"]')
         .forEach((inp) => {
@@ -391,13 +388,15 @@ export default function App() {
   const [archivoSeleccionado, setArchivoSeleccionado] = useState(null)
   const [guardando, setGuardando] = useState(false)
 
+  // FUNCIÓN GLOBAL DE SINCRONIZACIÓN PARA TODOS LOS MÓDULOS DEL ERP
   const recargarDatos = useCallback(async (silencioso = false) => {
     if (!silencioso) setSincronizando(true)
+    setSyncTrigger((prev) => prev + 1) // <-- Fuerza actualización en módulos con estado interno (Almacén y Visor 3D)
     const ts = Date.now()
 
     const fetchSeguro = async (endpoint) => {
       try {
-        const res = await fetch(`${API_URL}${endpoint}?t=${ts}`)
+        const res = await fetch(`${API_URL}${endpoint}?t=${ts}`, { cache: 'no-store' })
         if (!res.ok) return null
         return await res.json()
       } catch {
@@ -446,10 +445,14 @@ export default function App() {
 
     setCargando(false)
     setSincronizando(false)
-  }, [])
+
+    if (!silencioso) {
+      mostrarToast('Datos sincronizados con Azure SQL')
+    }
+  }, [mostrarToast])
 
   useEffect(() => {
-    recargarDatos()
+    recargarDatos(true)
   }, [recargarDatos])
 
   const proveedoresUnicos = useMemo(
@@ -931,6 +934,8 @@ export default function App() {
     }
   }
 
+  const enVistaVisor3DPuro = moduloActivo === 'almacen' && subVistaAlmacen === 'visor3d'
+
   return (
     <div style={estilos.appLayout}>
       {notificacion && (
@@ -1033,7 +1038,12 @@ export default function App() {
       </aside>
 
       {/* ÁREA DE CONTENIDO PRINCIPAL */}
-      <div style={estilos.mainWrapper}>
+      <div
+        style={{
+          ...estilos.mainWrapper,
+          overflowY: enVistaVisor3DPuro ? 'hidden' : 'auto'
+        }}
+      >
         <header style={estilos.topHeader}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -1103,12 +1113,15 @@ export default function App() {
             )}
 
             <button
-              onClick={() => recargarDatos()}
+              onClick={() => recargarDatos(false)}
+              disabled={sincronizando}
               className="pro-btn pro-btn-secondary"
               title="Actualizar datos desde Azure SQL"
             >
-              <span>↻</span>
-              <span>Sincronizar</span>
+              <span style={{ display: 'inline-block', animation: sincronizando ? 'spin 0.8s linear infinite' : 'none' }}>
+                ↻
+              </span>
+              <span>{sincronizando ? 'Sincronizando...' : 'Sincronizar'}</span>
             </button>
 
             {moduloActivo === 'compras' && puedeEditarModuloActual && (
@@ -1214,9 +1227,15 @@ export default function App() {
                     mostrarToast={mostrarToast}
                     irAlVisor3D={() => setSubVistaAlmacen('visor3d')}
                     puedeEditar={puedeEditarModuloActual}
+                    syncTrigger={syncTrigger}
                   />
                 ) : (
-                  <GestionAlmacen3D API_URL={API_URL} puedeEditar={puedeEditarModuloActual} />
+                  <GestionAlmacen3D
+                    API_URL={API_URL}
+                    puedeEditar={puedeEditarModuloActual}
+                    esModal={false}
+                    syncTrigger={syncTrigger}
+                  />
                 )
               )}
 

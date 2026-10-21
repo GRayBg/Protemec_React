@@ -11,7 +11,8 @@ export default function GestionAlmacenInventario({
   recargarDatos,
   mostrarToast,
   irAlVisor3D,
-  puedeEditar = true
+  puedeEditar = true,
+  syncTrigger = 0
 }) {
   // Vista inicial: 'hub' (Centro de Mando visual) | 'inventario' | 'grupo' | 'prestamos' | 'recepcion' | 'kardex'
   const [pestanaInterna, setPestanaInterna] = useState('hub')
@@ -65,7 +66,7 @@ export default function GestionAlmacenInventario({
   const [sitioTrabajoGrupo, setSitioTrabajoGrupo] = useState('')
   const [notasGrupo, setNotasGrupo] = useState('')
   const [busquedaSelectorGrupo, setBusquedaSelectorGrupo] = useState('')
-  const [carritoGrupo, setCarritoGrupo] = useState([]) // [{ inventarioID, nombreProducto, ubicacion3D, stockMax, cantidad, tipoMovimiento }]
+  const [carritoGrupo, setCarritoGrupo] = useState([])
 
   const cargarAlmacen = useCallback(async () => {
     try {
@@ -81,9 +82,10 @@ export default function GestionAlmacenInventario({
     }
   }, [API_URL])
 
+  // Recarga al iniciar y también cada vez que se presiona el botón "Sincronizar" en el Header
   useEffect(() => {
     cargarAlmacen()
-  }, [cargarAlmacen])
+  }, [cargarAlmacen, syncTrigger])
 
   // Solo mostrar personal ACTIVO de RH
   const personalActivo = useMemo(
@@ -125,14 +127,14 @@ export default function GestionAlmacenInventario({
           departamento: m.Departamento || '',
           proyecto: m.Proyecto || 'Sitio Externo',
           fecha: m.FechaMovimiento,
-          operadorERP: m.UsuarioERP || 'Almacén',
+          operadorERP: m.UsuarioERP || etiquetaOperadorActivo,
           partidas: []
         }
       }
       mapa[clave].partidas.push(m)
     })
     return Object.values(mapa)
-  }, [prestamosActivos])
+  }, [prestamosActivos, etiquetaOperadorActivo])
 
   // =========================================================================
   // ANALÍTICA PREDICTIVA DE ALMACÉN (TOP SALIDAS Y ALERTAS DE STOCK)
@@ -215,7 +217,12 @@ export default function GestionAlmacenInventario({
 
     return movimientos.filter((m) => {
       if (filtroTipoKardex !== 'TODOS') {
-        if (filtroTipoKardex === 'ENTRADAS' && !String(m.TipoMovimiento).includes('Entrada') && !String(m.TipoMovimiento).includes('Recepcion')) return false
+        if (
+          filtroTipoKardex === 'ENTRADAS' &&
+          !String(m.TipoMovimiento).includes('Entrada') &&
+          !String(m.TipoMovimiento).includes('Recepcion')
+        )
+          return false
         if (filtroTipoKardex === 'SALIDAS' && m.TipoMovimiento !== 'Salida Consumo') return false
         if (filtroTipoKardex === 'PRESTAMOS' && m.TipoMovimiento !== 'Prestamo Herramienta') return false
         if (filtroTipoKardex === 'GRUPO' && !m.FolioGrupo) return false
@@ -464,6 +471,7 @@ export default function GestionAlmacenInventario({
 
       if (mostrarToast) mostrarToast(`"${mov.NombreProducto}" devuelto al stock`)
       await cargarAlmacen()
+      if (recargarDatos) recargarDatos()
     } catch (err) {
       if (mostrarToast) mostrarToast(err.message, 'error')
     } finally {
@@ -485,6 +493,7 @@ export default function GestionAlmacenInventario({
 
       if (mostrarToast) mostrarToast(`✓ ${data.mensaje}`)
       await cargarAlmacen()
+      if (recargarDatos) recargarDatos()
     } catch (err) {
       if (mostrarToast) mostrarToast(err.message, 'error')
     } finally {
@@ -577,7 +586,6 @@ export default function GestionAlmacenInventario({
       ===================================================================== */}
       {pestanaInterna === 'hub' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-          {/* TARJETAS DE ACCESO RÁPIDO INTUITIVAS */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '14px' }}>
             <div
               onClick={() => setPestanaInterna('inventario')}
@@ -698,7 +706,6 @@ export default function GestionAlmacenInventario({
 
           {/* SECCIÓN DE ANÁLISIS Y PREVISIÓN CON GRÁFICAS */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(410px, 1fr))', gap: '18px' }}>
-            {/* GRÁFICA 1: ELEMENTOS CON MÁS SALIDAS / DEMANDA */}
             <div className="pro-card" style={{ padding: '20px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
                 <div>
@@ -747,7 +754,6 @@ export default function GestionAlmacenInventario({
               )}
             </div>
 
-            {/* GRÁFICA 2: PREVISIÓN DE REABASTECIMIENTO (STOCK CRÍTICO / BAJO) */}
             <div className="pro-card" style={{ padding: '20px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
                 <div>
@@ -821,7 +827,6 @@ export default function GestionAlmacenInventario({
       ===================================================================== */}
       {pestanaInterna === 'inventario' && (
         <div className="pro-card" style={{ padding: '18px' }}>
-          {/* BARRA DE BÚSQUEDA Y FILTROS RÁPIDOS PARA EL OPERADOR */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', gap: '12px', flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', flex: 1 }}>
               <input
@@ -986,7 +991,6 @@ export default function GestionAlmacenInventario({
       ===================================================================== */}
       {pestanaInterna === 'grupo' && (
         <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 1fr', gap: '18px', alignItems: 'start' }}>
-          {/* CATÁLOGO RÁPIDO PARA SELECCIONAR ARTÍCULOS AL ENVÍO */}
           <div className="pro-card" style={{ padding: '18px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <div>
               <h3 style={{ fontSize: '15.5px', margin: 0 }}>1. Selecciona Materiales o Herramientas del Almacén</h3>
@@ -1055,7 +1059,6 @@ export default function GestionAlmacenInventario({
             </div>
           </div>
 
-          {/* VALE DE SALIDA EN GRUPO / RESPONSABLE Y SITIO */}
           <form onSubmit={autorizarDespachoEnGrupo} className="pro-card" style={{ padding: '18px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
@@ -1126,7 +1129,6 @@ export default function GestionAlmacenInventario({
               />
             </div>
 
-            {/* LISTA DE ELEMENTOS AGREGADOS AL PAQUETE */}
             <div style={{ border: '1px solid var(--border-light)', borderRadius: '10px', overflow: 'hidden' }}>
               {carritoGrupo.length === 0 ? (
                 <div style={{ padding: '26px', textAlign: 'center', color: '#86868b', fontSize: '12.5px', backgroundColor: '#f8fafc' }}>
@@ -1499,7 +1501,7 @@ export default function GestionAlmacenInventario({
                         {esEntrada ? `+${m.Cantidad}` : `-${m.Cantidad}`}
                       </td>
                       <td style={{ padding: '9px 12px', fontWeight: 600, color: '#334155' }}>
-                        👤 {m.UsuarioERP || 'admin'}
+                        👤 {m.UsuarioERP || etiquetaOperadorActivo}
                       </td>
                       <td style={{ padding: '9px 12px' }}>{m.NombreEmpleado || '—'}</td>
                       <td style={{ padding: '9px 12px' }}>{m.Proyecto || '—'}</td>
@@ -1529,7 +1531,7 @@ export default function GestionAlmacenInventario({
       )}
 
       {/* =====================================================================
-          VENTANA FLOTANTE 3D PARA MOSTRAR UBICACIÓN DE UN ARTÍCULO
+          VENTANA FLOTANTE 3D PARA MOSTRAR UBICACIÓN DE UN ARTÍCULO (SIN SCROLL)
       ===================================================================== */}
       {itemFlotante3D &&
         createPortal(
@@ -1541,7 +1543,7 @@ export default function GestionAlmacenInventario({
             <div
               className="pro-modal-window"
               style={{
-                maxWidth: '1040px',
+                maxWidth: '1080px',
                 width: '94vw',
                 height: '86vh',
                 display: 'flex',
@@ -1550,7 +1552,15 @@ export default function GestionAlmacenInventario({
               }}
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="pro-modal-header" style={{ padding: '14px 22px', backgroundColor: '#0f172a', color: '#ffffff' }}>
+              <div
+                className="pro-modal-header"
+                style={{
+                  padding: '14px 22px',
+                  backgroundColor: '#0f172a',
+                  color: '#ffffff',
+                  flexShrink: 0
+                }}
+              >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
                   <span style={{ fontSize: '22px' }}>🧊</span>
                   <div>
@@ -1558,7 +1568,14 @@ export default function GestionAlmacenInventario({
                       Localizador 3D: {itemFlotante3D.NombreProducto}
                     </h3>
                     <span style={{ fontSize: '12px', color: '#94a3b8' }}>
-                      Ubicado en Nodo / Rack 3D: <strong style={{ color: '#38bdf8' }}>{itemFlotante3D.Ubicacion3D || 'Pieza1'}</strong> · Stock disponible: <strong style={{ color: '#34d399' }}>{itemFlotante3D.CantidadStock} unidades</strong>
+                      Ubicado en Nodo / Rack 3D:{' '}
+                      <strong style={{ color: '#38bdf8' }}>
+                        {itemFlotante3D.Ubicacion3D || 'Pieza1'}
+                      </strong>{' '}
+                      · Stock disponible:{' '}
+                      <strong style={{ color: '#34d399' }}>
+                        {itemFlotante3D.CantidadStock} unidades
+                      </strong>
                     </span>
                   </div>
                 </div>
@@ -1572,11 +1589,22 @@ export default function GestionAlmacenInventario({
                 </button>
               </div>
 
-              <div style={{ flex: 1, position: 'relative', overflow: 'auto', backgroundColor: '#f8fafc', padding: '12px' }}>
+              <div
+                style={{
+                  flex: 1,
+                  position: 'relative',
+                  overflow: 'hidden',
+                  backgroundColor: '#f8fafc',
+                  padding: '12px',
+                  boxSizing: 'border-box'
+                }}
+              >
                 <GestionAlmacen3D
                   API_URL={API_URL}
                   ubicacionResaltada={itemFlotante3D.Ubicacion3D}
                   productoResaltado={itemFlotante3D}
+                  esModal={true}
+                  syncTrigger={syncTrigger}
                 />
               </div>
             </div>
@@ -1601,7 +1629,6 @@ export default function GestionAlmacenInventario({
               </div>
 
               <form onSubmit={guardarEntradaInventario} className="pro-modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                {/* CAMPO AUTOMÁTICO DE QUIÉN ESTÁ AGREGANDO LA EXISTENCIA */}
                 <div
                   style={{
                     padding: '10px 14px',
@@ -1689,7 +1716,7 @@ export default function GestionAlmacenInventario({
                     <label className="pro-label">Ubicación 3D (Rack / Nodo GLB) *</label>
                     <input
                       type="text"
-                      placeholder="Ej. Pieza1, Pieza8, Pieza12..."
+                      placeholder="Ej. Pieza1, A7, Rack3..."
                       value={ubicacion3DInput}
                       onChange={(e) => setUbicacion3DInput(e.target.value)}
                       required

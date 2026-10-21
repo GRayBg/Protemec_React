@@ -1,17 +1,24 @@
-
-import React, { useState, Suspense, useMemo, useEffect } from 'react'
+import React, { useState, Suspense, useMemo, useEffect, useRef } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls, Html, Bounds } from '@react-three/drei'
 import { Almacen3D } from './Almacen3D'
 
-export default function GestionAlmacen3D({ API_URL }) {
+export default function GestionAlmacen3D({
+  API_URL,
+  ubicacionResaltada = null,
+  productoResaltado = null,
+  esModal = false,
+  syncTrigger = 0
+}) {
   const [searchTerm, setSearchTerm] = useState('')
   const [productoSeleccionado, setProductoSeleccionado] = useState(null)
   const [inventarioRemoto, setInventarioRemoto] = useState([])
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState(null)
 
-  // OBTENER PRODUCTOS DESDE LA BASE DE DATOS
+  const itemSeleccionadoRef = useRef(null)
+
+  // OBTENER PRODUCTOS DESDE LA BASE DE DATOS (Se actualiza también con el botón Sincronizar)
   useEffect(() => {
     if (!API_URL) {
       setInventarioRemoto([])
@@ -24,11 +31,10 @@ export default function GestionAlmacen3D({ API_URL }) {
     const cargarInventario = async () => {
       setCargando(true)
       setError(null)
-      setInventarioRemoto([])
 
       try {
         const respuesta = await fetch(
-          `${API_URL}/api/inventario`,
+          `${API_URL}/api/inventario?t=${Date.now()}`,
           { signal: controller.signal }
         )
 
@@ -44,13 +50,13 @@ export default function GestionAlmacen3D({ API_URL }) {
 
         const productos = data.map((i) => ({
           id: `db-${i.ID}`,
+          rawId: i.ID,
           nombre: i.NombreProducto,
           ubicacion: i.Ubicacion3D,
           stock: i.CantidadStock
         }))
 
         setInventarioRemoto(productos)
-
       } catch (err) {
         if (err.name !== 'AbortError') {
           console.error('Error cargando inventario:', err)
@@ -67,7 +73,51 @@ export default function GestionAlmacen3D({ API_URL }) {
     cargarInventario()
 
     return () => controller.abort()
-  }, [API_URL])
+  }, [API_URL, syncTrigger])
+
+  // AUTO-SELECCIONAR EL ARTÍCULO CUANDO SE ABRE DESDE LA VENTANA FLOTANTE DEL STOCK
+  useEffect(() => {
+    if (inventarioRemoto.length === 0) return
+
+    if (productoResaltado) {
+      const idBuscado = productoResaltado.ID ?? productoResaltado.id
+      const nombreBuscado = String(
+        productoResaltado.NombreProducto ?? productoResaltado.nombre ?? ''
+      ).toLowerCase()
+
+      const encontrado = inventarioRemoto.find(
+        (p) =>
+          (idBuscado !== undefined &&
+            (p.id === `db-${idBuscado}` || String(p.rawId) === String(idBuscado))) ||
+          (nombreBuscado && String(p.nombre ?? '').toLowerCase() === nombreBuscado)
+      )
+
+      if (encontrado) {
+        setProductoSeleccionado(encontrado)
+        return
+      }
+    }
+
+    if (ubicacionResaltada) {
+      const ubLwr = String(ubicacionResaltada).toLowerCase()
+      const encontradoPorUb = inventarioRemoto.find(
+        (p) => String(p.ubicacion ?? '').toLowerCase() === ubLwr
+      )
+      if (encontradoPorUb) {
+        setProductoSeleccionado(encontradoPorUb)
+      }
+    }
+  }, [productoResaltado, ubicacionResaltada, inventarioRemoto])
+
+  // Hacer scroll suave en la lista izquierda hacia el producto seleccionado
+  useEffect(() => {
+    if (productoSeleccionado && itemSeleccionadoRef.current) {
+      itemSeleccionadoRef.current.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest'
+      })
+    }
+  }, [productoSeleccionado])
 
   // FILTRAR PRODUCTOS DE LA BASE DE DATOS
   const productosFiltrados = useMemo(() => {
@@ -86,57 +136,45 @@ export default function GestionAlmacen3D({ API_URL }) {
   const productoActivo = useMemo(() => {
     if (!productoSeleccionado) return null
 
-    return inventarioRemoto.find(
-      (p) => p.id === productoSeleccionado.id
-    ) ?? null
+    return (
+      inventarioRemoto.find((p) => p.id === productoSeleccionado.id) ?? null
+    )
   }, [productoSeleccionado, inventarioRemoto])
 
   // UBICACIONES QUE SE ILUMINARÁN EN EL MODELO 3D
   const ubicacionesAColorear = useMemo(() => {
     if (productoActivo) {
-      return productoActivo.ubicacion
-        ? [productoActivo.ubicacion]
-        : []
+      return productoActivo.ubicacion ? [productoActivo.ubicacion] : []
     }
 
     if (searchTerm.trim()) {
       return [
         ...new Set(
-          productosFiltrados
-            .map((p) => p.ubicacion)
-            .filter(Boolean)
+          productosFiltrados.map((p) => p.ubicacion).filter(Boolean)
         )
       ]
     }
 
+    if (ubicacionResaltada) {
+      return [ubicacionResaltada]
+    }
+
     return []
-  }, [productosFiltrados, productoActivo, searchTerm])
+  }, [productosFiltrados, productoActivo, searchTerm, ubicacionResaltada])
 
   return (
     <div
       className="pro-card"
-      style={estilos.contenedorPrincipal}
+      style={estilos.contenedorPrincipal(esModal)}
     >
-      {/* PANEL LATERAL DE BÚSQUEDA */}
+      {/* PANEL LATERAL DE BÚSQUEDA (Único con barra de desplazamiento) */}
       <div style={estilos.panelLateral}>
-        <div style={{ marginBottom: '14px' }}>
-          <h3
-            style={{
-              fontSize: '15px',
-              marginBottom: '4px'
-            }}
-          >
+        <div style={{ marginBottom: '14px', flexShrink: 0 }}>
+          <h3 style={{ fontSize: '15px', marginBottom: '4px' }}>
             📦 Gemelo Digital 3D
           </h3>
-
-          <p
-            style={{
-              fontSize: '12px',
-              color: '#86868b'
-            }}
-          >
-            Selecciona un material para iluminar
-            su ubicación física en el almacén
+          <p style={{ fontSize: '12px', color: '#86868b', margin: 0 }}>
+            Selecciona un material para iluminar su ubicación física en el almacén
           </p>
         </div>
 
@@ -150,7 +188,7 @@ export default function GestionAlmacen3D({ API_URL }) {
             setProductoSeleccionado(null)
           }}
           className="pro-input"
-          style={{ marginBottom: '12px' }}
+          style={{ marginBottom: '12px', flexShrink: 0 }}
         />
 
         {/* CONTADOR Y LIMPIAR SELECCIÓN */}
@@ -159,18 +197,17 @@ export default function GestionAlmacen3D({ API_URL }) {
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            marginBottom: '8px'
+            marginBottom: '8px',
+            flexShrink: 0
           }}
         >
-          <span
-            className="pro-label"
-            style={{ margin: 0 }}
-          >
+          <span className="pro-label" style={{ margin: 0 }}>
             Elementos ({productosFiltrados.length})
           </span>
 
           {productoActivo && (
             <button
+              type="button"
               onClick={() => setProductoSeleccionado(null)}
               style={{
                 background: 'none',
@@ -188,47 +225,35 @@ export default function GestionAlmacen3D({ API_URL }) {
 
         {/* LISTA DE PRODUCTOS */}
         <ul style={estilos.listaResultados}>
-
           {cargando && (
-            <li style={estilos.mensajeLista}>
-              Cargando inventario...
-            </li>
+            <li style={estilos.mensajeLista}>Cargando inventario...</li>
           )}
 
           {!cargando && error && (
-            <li
-              style={{
-                ...estilos.mensajeLista,
-                color: '#dc2626'
-              }}
-            >
+            <li style={{ ...estilos.mensajeLista, color: '#dc2626' }}>
               {error}
             </li>
           )}
 
-          {!cargando &&
-            !error &&
-            productosFiltrados.length === 0 && (
-              <li style={estilos.mensajeLista}>
-                {searchTerm.trim()
-                  ? 'No se encontraron materiales.'
-                  : 'No hay productos registrados en el inventario.'}
-              </li>
-            )}
+          {!cargando && !error && productosFiltrados.length === 0 && (
+            <li style={estilos.mensajeLista}>
+              {searchTerm.trim()
+                ? 'No se encontraron materiales.'
+                : 'No hay productos registrados en el inventario.'}
+            </li>
+          )}
 
           {!cargando &&
             !error &&
             productosFiltrados.map((item) => {
-              const isSelected =
-                productoActivo?.id === item.id
+              const isSelected = productoActivo?.id === item.id
 
               return (
                 <li
                   key={item.id}
+                  ref={isSelected ? itemSeleccionadoRef : null}
                   onClick={() =>
-                    setProductoSeleccionado(
-                      isSelected ? null : item
-                    )
+                    setProductoSeleccionado(isSelected ? null : item)
                   }
                   style={estilos.itemLista(isSelected)}
                 >
@@ -242,27 +267,24 @@ export default function GestionAlmacen3D({ API_URL }) {
                     <strong
                       style={{
                         fontSize: '13px',
-                        color: isSelected
-                          ? '#0071e3'
-                          : '#1d1d1f'
+                        color: isSelected ? '#0071e3' : '#1d1d1f'
                       }}
                     >
                       {item.nombre}
                     </strong>
 
-                    {item.stock !== undefined &&
-                      item.stock !== null && (
-                        <span
-                          className="pro-mono"
-                          style={{
-                            fontSize: '11px',
-                            fontWeight: 700,
-                            color: '#515154'
-                          }}
-                        >
-                          {item.stock} u.
-                        </span>
-                      )}
+                    {item.stock !== undefined && item.stock !== null && (
+                      <span
+                        className="pro-mono"
+                        style={{
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          color: '#515154'
+                        }}
+                      >
+                        {item.stock} u.
+                      </span>
+                    )}
                   </div>
 
                   <div
@@ -276,7 +298,6 @@ export default function GestionAlmacen3D({ API_URL }) {
                     }}
                   >
                     <span>Nodo 3D:</span>
-
                     <code
                       className="pro-mono"
                       style={estilos.codeTag(isSelected)}
@@ -290,43 +311,28 @@ export default function GestionAlmacen3D({ API_URL }) {
         </ul>
       </div>
 
-      {/* VISOR 3D */}
+      {/* VISOR 3D (Sin barra de scroll y siempre centrado) */}
       <div style={estilos.visorCanvas}>
-
-        {/* INDICADOR DE PRODUCTO SELECCIONADO */}
         {productoActivo && (
           <div style={estilos.hudBanner}>
-            <span>
-              📍 Ubicación seleccionada:
-            </span>
-
+            <span>📍 Ubicación seleccionada:</span>
             <strong className="pro-mono">
               {productoActivo.ubicacion || 'Sin ubicación'}
             </strong>
-
-            <span>
-              — {productoActivo.nombre}
-            </span>
+            <span>— {productoActivo.nombre}</span>
           </div>
         )}
 
         <Canvas
+          style={{ width: '100%', height: '100%', display: 'block' }}
           camera={{
             position: [5, 5, 5],
             fov: 40
           }}
         >
-          <color
-            attach="background"
-            args={['#f8fafc']}
-          />
-
+          <color attach="background" args={['#f8fafc']} />
           <ambientLight intensity={1.3} />
-
-          <directionalLight
-            position={[10, 15, 10]}
-            intensity={1.8}
-          />
+          <directionalLight position={[10, 15, 10]} intensity={1.8} />
 
           <Suspense
             fallback={
@@ -338,7 +344,8 @@ export default function GestionAlmacen3D({ API_URL }) {
                     padding: '10px 18px',
                     borderRadius: '99px',
                     fontSize: '12.5px',
-                    fontWeight: 600
+                    fontWeight: 600,
+                    whiteSpace: 'nowrap'
                   }}
                 >
                   Cargando Gemelo Digital 3D...
@@ -346,15 +353,8 @@ export default function GestionAlmacen3D({ API_URL }) {
               </Html>
             }
           >
-            <Bounds
-              fit
-              clip
-              observe
-              margin={1.2}
-            >
-              <Almacen3D
-                ubicacionesDestacadas={ubicacionesAColorear}
-              />
+            <Bounds fit clip observe margin={1.2}>
+              <Almacen3D ubicacionesDestacadas={ubicacionesAColorear} />
             </Bounds>
           </Suspense>
 
@@ -367,13 +367,14 @@ export default function GestionAlmacen3D({ API_URL }) {
 
 // ESTILOS
 const estilos = {
-  contenedorPrincipal: {
+  contenedorPrincipal: (esModal) => ({
     display: 'flex',
     width: '100%',
-    height: 'calc(100vh - 140px)',
-    minHeight: '560px',
-    overflow: 'hidden'
-  },
+    height: esModal ? '100%' : 'calc(100vh - 130px)',
+    minHeight: esModal ? '0px' : '460px',
+    overflow: 'hidden',
+    boxSizing: 'border-box'
+  }),
 
   panelLateral: {
     width: '330px',
@@ -382,12 +383,14 @@ const estilos = {
     backgroundColor: '#ffffff',
     borderRight: '1px solid var(--border-light)',
     display: 'flex',
-    flexDirection: 'column'
+    flexDirection: 'column',
+    boxSizing: 'border-box',
+    overflow: 'hidden'
   },
 
   listaResultados: {
     listStyle: 'none',
-    padding: 0,
+    padding: '0 4px 0 0',
     margin: 0,
     overflowY: 'auto',
     flex: 1,
@@ -406,24 +409,16 @@ const estilos = {
   itemLista: (isSelected) => ({
     padding: '11px 14px',
     borderRadius: '10px',
-    border: `1px solid ${isSelected
-        ? '#0071e3'
-        : 'var(--border-light)'
-      }`,
-    backgroundColor: isSelected
-      ? 'rgba(0, 113, 227, 0.06)'
-      : '#ffffff',
+    border: `1px solid ${isSelected ? '#0071e3' : 'var(--border-light)'}`,
+    backgroundColor: isSelected ? 'rgba(0, 113, 227, 0.06)' : '#ffffff',
     cursor: 'pointer',
-    transition: 'all 0.18s ease'
+    transition: 'all 0.18s ease',
+    flexShrink: 0
   }),
 
   codeTag: (isSelected) => ({
-    backgroundColor: isSelected
-      ? '#0071e3'
-      : '#f1f5f9',
-    color: isSelected
-      ? '#ffffff'
-      : '#334155',
+    backgroundColor: isSelected ? '#0071e3' : '#f1f5f9',
+    color: isSelected ? '#ffffff' : '#334155',
     padding: '2px 6px',
     borderRadius: '5px',
     fontSize: '11px',
@@ -434,7 +429,8 @@ const estilos = {
     flex: 1,
     height: '100%',
     position: 'relative',
-    backgroundColor: '#f8fafc'
+    backgroundColor: '#f8fafc',
+    overflow: 'hidden'
   },
 
   hudBanner: {

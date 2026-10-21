@@ -38,7 +38,7 @@ const CONTAINER_FOTOS_RH = process.env.AZURE_CONTAINER_FOTOS || 'foto-empleados'
 const CONTAINER_DOCS_RH = process.env.AZURE_CONTAINER_DOCS || 'documentos-usuarios'
 
 // -------------------------------------------------------------
-// AUTO-VERIFICACIÓN DE COLUMNAS NUEVAS PARA KPIS Y RH EN SQL
+// AUTO-VERIFICACIÓN DE COLUMNAS NUEVAS PARA KPIS, RH Y ALMACÉN EN SQL
 // -------------------------------------------------------------
 async function asegurarColumnasRH() {
   try {
@@ -63,10 +63,19 @@ async function asegurarColumnasRH() {
 
         ALTER TABLE dbo.EvaluacionesKPI ALTER COLUMN PeriodoMes VARCHAR(30) NOT NULL;
       END
+
+      IF OBJECT_ID('dbo.MovimientosAlmacen', 'U') IS NOT NULL
+      BEGIN
+        IF COL_LENGTH('dbo.MovimientosAlmacen', 'UsuarioERP') IS NULL
+          ALTER TABLE dbo.MovimientosAlmacen ADD UsuarioERP NVARCHAR(150) NULL;
+
+        IF COL_LENGTH('dbo.MovimientosAlmacen', 'FolioGrupo') IS NULL
+          ALTER TABLE dbo.MovimientosAlmacen ADD FolioGrupo NVARCHAR(60) NULL;
+      END
     `)
-    console.log('✅ Esquema de RH y KPIs verificado en Azure SQL')
+    console.log('✅ Esquema de RH, KPIs y Almacén (UsuarioERP / FolioGrupo) verificado en Azure SQL')
   } catch (e) {
-    console.warn('⚠️ Aviso al verificar columnas de RH:', e.message)
+    console.warn('⚠️ Aviso al verificar columnas:', e.message)
   }
 }
 asegurarColumnasRH()
@@ -541,7 +550,7 @@ app.put('/api/ingenieria/:id/avance', async (req, res) => {
 })
 
 // -------------------------------------------------------------
-// 7. ALMACÉN, INVENTARIO, SALIDAS Y PRÉSTAMOS DE HERRAMIENTA
+// 7. ALMACÉN, INVENTARIO, SALIDAS, KITS EN GRUPO Y PRÉSTAMOS
 // -------------------------------------------------------------
 app.get('/api/inventario', async (req, res) => {
   try {
@@ -565,8 +574,9 @@ app.get('/api/inventario/movimientos', async (req, res) => {
 })
 
 app.post('/api/inventario/ingresar', async (req, res) => {
-  const { compraID, modo, inventarioIDExistente, nombreProducto, ubicacion3D, cantidad, notas } = req.body
+  const { compraID, modo, inventarioIDExistente, nombreProducto, ubicacion3D, cantidad, notas, usuarioERP } = req.body
   const cantNum = parseInt(cantidad, 10) || 1
+  const operadorSesion = (usuarioERP || '').trim() || 'Operador Almacén'
 
   try {
     let pool = await sql.connect(config)
@@ -627,11 +637,12 @@ app.post('/api/inventario/ingresar', async (req, res) => {
         .input('TM', sql.VarChar, compraID ? 'Recepcion Compra' : 'Entrada Manual')
         .input('Cant', sql.Int, cantNum)
         .input('Not', sql.NVarChar, notas || (compraID ? `Ingreso desde Compra #${compraID}` : 'Alta / suma directa en almacén'))
+        .input('UERP', sql.NVarChar, operadorSesion)
         .query(`
           IF OBJECT_ID('dbo.MovimientosAlmacen', 'U') IS NOT NULL
           BEGIN
-            INSERT INTO MovimientosAlmacen (InventarioID, NombreProducto, TipoMovimiento, Cantidad, Notas)
-            VALUES (@IID, @NP, @TM, @Cant, @Not)
+            INSERT INTO MovimientosAlmacen (InventarioID, NombreProducto, TipoMovimiento, Cantidad, Notas, UsuarioERP)
+            VALUES (@IID, @NP, @TM, @Cant, @Not, @UERP)
           END
         `)
 
@@ -647,8 +658,9 @@ app.post('/api/inventario/ingresar', async (req, res) => {
 })
 
 app.post('/api/inventario/salida', async (req, res) => {
-  const { inventarioID, tipoMovimiento, cantidad, empleadoID, proyecto, notas } = req.body
+  const { inventarioID, tipoMovimiento, cantidad, empleadoID, proyecto, notas, usuarioERP } = req.body
   const cantSalida = parseInt(cantidad, 10) || 1
+  const operadorSesion = (usuarioERP || '').trim() || 'Operador Almacén'
 
   try {
     let pool = await sql.connect(config)
@@ -705,11 +717,12 @@ app.post('/api/inventario/salida', async (req, res) => {
         .input('Proy', sql.NVarChar, proyecto || null)
         .input('Not', sql.NVarChar, notas || null)
         .input('EstP', sql.VarChar, esPrestamo ? 'Prestado' : null)
+        .input('UERP', sql.NVarChar, operadorSesion)
         .query(`
           INSERT INTO MovimientosAlmacen
-            (InventarioID, NombreProducto, TipoMovimiento, Cantidad, EmpleadoID, NombreEmpleado, Proyecto, Notas, EstatusPrestamo)
+            (InventarioID, NombreProducto, TipoMovimiento, Cantidad, EmpleadoID, NombreEmpleado, Proyecto, Notas, EstatusPrestamo, UsuarioERP)
           VALUES
-            (@IID, @NP, @TM, @Cant, @EID, @NEmp, @Proy, @Not, @EstP)
+            (@IID, @NP, @TM, @Cant, @EID, @NEmp, @Proy, @Not, @EstP, @UERP)
         `)
 
       await tx.commit()
@@ -723,9 +736,97 @@ app.post('/api/inventario/salida', async (req, res) => {
   }
 })
 
+app.post('/api/inventario/salida-grupo', async (req, res) => {
+  const { empleadoID, proyecto, sitioTrabajo, notasGenerales, usuarioERP, items } = req.body
+  const operadorSesion = (usuarioERP || '').trim() || 'Operador Almacén'
+
+  if (!Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: 'Debes incluir al menos un artículo en el envío en grupo.' })
+  }
+
+  try {
+    let pool = await sql.connect(config)
+    let tx = new sql.Transaction(pool)
+    await tx.begin()
+
+    try {
+      let empRes = await tx.request()
+        .input('EID', sql.Int, parseInt(empleadoID, 10))
+        .query('SELECT EmpleadoID, NombreCompleto, Activo FROM PersonalRH WHERE EmpleadoID = @EID')
+
+      if (empRes.recordset.length === 0 || !empRes.recordset[0].Activo) {
+        throw new Error('El colaborador responsable no existe o está dado de baja en RH.')
+      }
+      const empleado = empRes.recordset[0]
+      const folioGrupo = `SITIO-${Date.now().toString().slice(-6)}`
+      const destinoFinal = [proyecto, sitioTrabajo].filter(Boolean).join(' · ') || 'Sitio Externo'
+
+      for (const partida of items) {
+        const cantSalida = parseInt(partida.cantidad, 10) || 1
+        let invRes = await tx.request()
+          .input('IID', sql.Int, parseInt(partida.inventarioID, 10))
+          .query('SELECT ID, NombreProducto, CantidadStock FROM InventarioAlmacen WHERE ID = @IID')
+
+        if (invRes.recordset.length === 0) {
+          throw new Error(`El artículo #${partida.inventarioID} no existe.`)
+        }
+        const itemBD = invRes.recordset[0]
+        if (itemBD.CantidadStock < cantSalida) {
+          throw new Error(`Stock insuficiente para "${itemBD.NombreProducto}". Disponible: ${itemBD.CantidadStock}`)
+        }
+
+        const nuevoStock = itemBD.CantidadStock - cantSalida
+        const esPrestamo = partida.tipoMovimiento === 'Prestamo Herramienta'
+        const nuevoEstadoItem = nuevoStock === 0
+          ? (esPrestamo ? 'En Préstamo' : 'Agotado')
+          : 'Almacenado'
+
+        await tx.request()
+          .input('IID', sql.Int, itemBD.ID)
+          .input('NuevoStock', sql.Int, nuevoStock)
+          .input('Estado', sql.NVarChar, nuevoEstadoItem)
+          .query(`
+            UPDATE InventarioAlmacen
+            SET CantidadStock = @NuevoStock,
+                Estado = @Estado,
+                FechaActualizacion = SYSDATETIME()
+            WHERE ID = @IID
+          `)
+
+        await tx.request()
+          .input('IID', sql.Int, itemBD.ID)
+          .input('NP', sql.NVarChar, itemBD.NombreProducto)
+          .input('TM', sql.VarChar, esPrestamo ? 'Prestamo Herramienta' : 'Salida Consumo')
+          .input('Cant', sql.Int, cantSalida)
+          .input('EID', sql.Int, empleado.EmpleadoID)
+          .input('NEmp', sql.NVarChar, empleado.NombreCompleto)
+          .input('Proy', sql.NVarChar, destinoFinal)
+          .input('Not', sql.NVarChar, notasGenerales || `Envío en grupo ${folioGrupo}`)
+          .input('EstP', sql.VarChar, esPrestamo ? 'Prestado' : null)
+          .input('UERP', sql.NVarChar, operadorSesion)
+          .input('FG', sql.NVarChar, folioGrupo)
+          .query(`
+            INSERT INTO MovimientosAlmacen
+              (InventarioID, NombreProducto, TipoMovimiento, Cantidad, EmpleadoID, NombreEmpleado, Proyecto, Notas, EstatusPrestamo, UsuarioERP, FolioGrupo)
+            VALUES
+              (@IID, @NP, @TM, @Cant, @EID, @NEmp, @Proy, @Not, @EstP, @UERP, @FG)
+          `)
+      }
+
+      await tx.commit()
+      res.json({ mensaje: `Kit ${folioGrupo} despachado correctamente (${items.length} partidas)`, folioGrupo })
+    } catch (err) {
+      await tx.rollback()
+      return res.status(400).json({ error: err.message })
+    }
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
 app.put('/api/inventario/prestamo/:movimientoId/devolver', async (req, res) => {
   const { movimientoId } = req.params
-  const { notasDevolucion } = req.body
+  const { notasDevolucion, usuarioERP } = req.body
 
   try {
     let pool = await sql.connect(config)
@@ -748,11 +849,13 @@ app.put('/api/inventario/prestamo/:movimientoId/devolver', async (req, res) => {
       await tx.request()
         .input('MID', sql.Int, mov.MovimientoID)
         .input('Not', sql.NVarChar, notasDevolucion ? `${mov.Notas || ''} | Devuelto: ${notasDevolucion}` : mov.Notas)
+        .input('UERP', sql.NVarChar, usuarioERP || mov.UsuarioERP || null)
         .query(`
           UPDATE MovimientosAlmacen
           SET EstatusPrestamo = 'Devuelto',
               FechaDevolucion = GETDATE(),
-              Notas = @Not
+              Notas = @Not,
+              UsuarioERP = COALESCE(UsuarioERP, @UERP)
           WHERE MovimientoID = @MID
         `)
 
@@ -769,6 +872,61 @@ app.put('/api/inventario/prestamo/:movimientoId/devolver', async (req, res) => {
 
       await tx.commit()
       res.json({ mensaje: 'Herramienta devuelta y sumada nuevamente al stock' })
+    } catch (err) {
+      await tx.rollback()
+      return res.status(400).json({ error: err.message })
+    }
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+app.put('/api/inventario/prestamo-grupo/:folioGrupo/devolver', async (req, res) => {
+  const { folioGrupo } = req.params
+  const { usuarioERP } = req.body
+
+  try {
+    let pool = await sql.connect(config)
+    let tx = new sql.Transaction(pool)
+    await tx.begin()
+
+    try {
+      let movsRes = await tx.request()
+        .input('FG', sql.NVarChar, folioGrupo)
+        .query("SELECT * FROM MovimientosAlmacen WHERE FolioGrupo = @FG AND EstatusPrestamo = 'Prestado'")
+
+      if (movsRes.recordset.length === 0) {
+        throw new Error('No hay herramientas pendientes por devolver en este kit.')
+      }
+
+      for (const mov of movsRes.recordset) {
+        await tx.request()
+          .input('MID', sql.Int, mov.MovimientoID)
+          .input('Not', sql.NVarChar, `${mov.Notas || ''} | Kit devuelto completo`)
+          .input('UERP', sql.NVarChar, usuarioERP || mov.UsuarioERP || null)
+          .query(`
+            UPDATE MovimientosAlmacen
+            SET EstatusPrestamo = 'Devuelto',
+                FechaDevolucion = GETDATE(),
+                Notas = @Not,
+                UsuarioERP = COALESCE(UsuarioERP, @UERP)
+            WHERE MovimientoID = @MID
+          `)
+
+        await tx.request()
+          .input('IID', sql.Int, mov.InventarioID)
+          .input('Cant', sql.Int, mov.Cantidad)
+          .query(`
+            UPDATE InventarioAlmacen
+            SET CantidadStock = ISNULL(CantidadStock, 0) + @Cant,
+                Estado = 'Almacenado',
+                FechaActualizacion = SYSDATETIME()
+            WHERE ID = @IID
+          `)
+      }
+
+      await tx.commit()
+      res.json({ mensaje: `Kit ${folioGrupo} reintegrado completo al almacén` })
     } catch (err) {
       await tx.rollback()
       return res.status(400).json({ error: err.message })
@@ -1152,7 +1310,6 @@ app.post('/api/rh/personal/:id/documentos', upload.single('archivo'), async (req
   }
 })
 
-// Actualizar manualmente la fecha de término / referencia de un permiso o documento
 app.put('/api/rh/documentos/:docId/vigencia', async (req, res) => {
   const { docId } = req.params
   const { fechaVencimiento } = req.body
@@ -1168,7 +1325,6 @@ app.put('/api/rh/documentos/:docId/vigencia', async (req, res) => {
   }
 })
 
-// Oculta el documento en el ERP pero conserva el registro y el link URL_SaaS en Azure SQL
 app.delete('/api/rh/documentos/:docId', async (req, res) => {
   const { docId } = req.params
   try {
@@ -1200,7 +1356,6 @@ app.get('/api/rh/kpis', async (req, res) => {
   } catch (e) { res.status(500).send(e.message) }
 })
 
-// Alta o actualización de evaluación KPI (soporta Semanal, Mensual, Bimestral y por Área)
 app.post('/api/rh/kpis', async (req, res) => {
   const {
     evaluacionID,
@@ -1291,7 +1446,6 @@ app.post('/api/rh/kpis', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-// Endpoint directo PUT para corregir una evaluación existente por su EvaluacionID
 app.put('/api/rh/kpis/:id', async (req, res) => {
   const { id } = req.params
   const {
